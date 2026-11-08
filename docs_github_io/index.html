@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>mpyy_donati_analiz (v2.0.0) — Academic Methodology &amp; GUI Guide</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"
+    onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]});"></script>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --emerald: #10b981;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.68;
+    }
+    header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 58%, #1d4ed8 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 3rem 1.5rem 2.5rem;
+    }
+    .container { max-width: 1140px; margin: 0 auto; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .badge {
+      font-size: 0.76rem; font-weight: 700; text-transform: uppercase;
+      padding: 0.3rem 0.75rem; border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148, 163, 184, 0.35);
+      color: #e2e8f0;
+    }
+    .badge.crs { border-color: var(--emerald); color: #6ee7b7; }
+    h1 { margin: 0 0 0.6rem; font-size: 2.2rem; }
+    h2 {
+      margin-top: 2.5rem; padding-bottom: 0.45rem;
+      border-bottom: 1px solid var(--border); color: #f1f5f9;
+    }
+    h3 { color: #7dd3fc; margin-top: 1.35rem; margin-bottom: 0.5rem; }
+    main { padding: 2rem 1.5rem 4rem; }
+    .panel {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.35rem; margin: 1.1rem 0;
+    }
+    .math-block {
+      background: rgba(15, 23, 42, 0.85); border-left: 4px solid var(--accent);
+      padding: 1rem 1.25rem; border-radius: 6px; overflow-x: auto; margin: 0.85rem 0;
+    }
+    .screenshot-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+      gap: 1.35rem; margin-top: 1.25rem;
+    }
+    figure {
+      margin: 0; background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1rem;
+    }
+    figure img { width: 100%; height: auto; border-radius: 6px; border: 1px solid #475569; }
+    figcaption { margin-top: 0.65rem; font-size: 0.88rem; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; background: var(--card); font-size: 0.88rem; }
+    th, td { padding: 0.7rem 0.85rem; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { background: #0f172a; color: #93c5fd; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-family: 'Consolas', monospace; background: rgba(15, 23, 42, 0.85);
+      padding: 0.15rem 0.4rem; border-radius: 4px; color: #7dd3fc; font-size: 0.88em;
+    }
+    footer {
+      border-top: 1px solid var(--border); padding: 2rem 1.5rem;
+      text-align: center; color: var(--muted); font-size: 0.88rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="badge-row">
+      <span class="badge">Plugin: mpyy_donati_analiz v2.0.0</span>
+      <span class="badge crs">Standard CRS: EPSG:5253 (TUREF / TM30)</span>
+      <span class="badge">QGIS 3.x &amp; 4.x (supportsQt6=True)</span>
+      <span class="badge">Multi-Language UI: EN (Default) • TR • ZH • ES</span>
+    </div>
+    <h1>MPYY Urban Facility Accessibility &amp; Spatial Optimization</h1>
+    <p style="max-width:880px; color:#cbd5e1; margin:0;">
+      Academic methodology and operational guide for prepared road-network graph construction (<code>FastRoadGraph</code>), multi-source Dijkstra service catchment modeling, MPYY Annex-2 standard deficit analysis, and 12-step recursive binary parcel splitting.
+    </p>
+  </div>
+</header>
+
+<main class="container">
+
+  <h2>1. Mathematical Formulation &amp; Spatial Graph Engine</h2>
+
+  <div class="panel">
+    <h3>1.1 Prepared Network Graph Construction &amp; $O(1)$ Spatial Snapping (<code>mpyy_engine.py :: FastRoadGraph</code>)</h3>
+    <p>
+      To eliminate GUI thread freezing during multi-facility network evaluations, <code>FastRoadGraph</code> constructs a compressed undirected weighted graph $G = (V, E, w)$ in the target metric CRS (<code>EPSG:5253</code>). Polylines are decimated so intermediate vertices are only materialized when accumulated segment length $\ell_{\text{acc}} \ge 15.0\text{ m}$ or at line endpoints. Vertex merging within tolerance $\tau = 2.5\text{ m}$ uses a spatial hash grid $(g_x, g_y) = (\lfloor x/\tau \rceil, \lfloor y/\tau \rceil)$, and arbitrary query points $p \in \mathbb{R}^2$ snap to their nearest graph node via <code>QgsSpatialIndex.nearestNeighbor</code> plus a coordinate memoization cache:
+    </p>
+    <div class="math-block">
+      $$(v^*(p),\, d_{\text{snap}}(p)) = \arg\min_{v \in V} \|p - \mathbf{x}_v\|_2$$
+    </div>
+
+    <h3>1.2 Multi-Source Dijkstra Network Service Catchments (<code>FastRoadGraph.multi_source_dijkstra</code>)</h3>
+    <p>
+      Extending <strong>Dijkstra (1959)</strong> (<a href="https://doi.org/10.1007/BF01386390">DOI: 10.1007/BF01386390</a>) to simultaneously seeded facility centroids $\mathcal{F}_k = \{f_1, \dots, f_m\}$ of category $k$, the priority queue is initialized with all snapped facility nodes $(d_{\text{snap}}(f_j), v^*(f_j))$ and expands shortest-path distances up to $D_{\max}$:
+    </p>
+    <div class="math-block">
+      $$D_k(u) = \min_{f \in \mathcal{F}_k} \left( d_{\text{snap}}(f) + \min_{\pi: v^*(f) \leadsto u} \sum_{e \in \pi} w(e) \right)$$
+    </div>
+    <p>
+      For any residential block centroid $r_i$ with area $A_i$ and area-weighted population $P_i = P_{\text{total}} \frac{A_i}{\sum_j A_j}$, the total road-network travel distance to the nearest facility of type $k$ is:
+    </p>
+    <div class="math-block">
+      $$d_{\text{road}}(r_i, k) = D_k(v^*(r_i)) + d_{\text{snap}}(r_i), \qquad d_{\text{euclid}}(r_i, k) = \min_{f \in \mathcal{F}_k} \|\mathbf{x}_{r_i} - \mathbf{x}_f\|_2$$
+    </div>
+    <p>
+      This dual formulation explicitly isolates <strong>Barrier-Severed Blocks</strong> (<code>BIRD OK / NO ROAD ACCESS</code>) where $d_{\text{euclid}}(r_i, k) \le R_{\text{euclid},k}$ but $d_{\text{road}}(r_i, k) &gt; R_{\text{net},k}$ due to missing street connectivity or physical barriers.
+    </p>
+
+    <h3>1.3 Two-Dimension Deficit &amp; Graph-Median Allocation Scoring (<code>mpyy_dialog.py :: run_full_analysis</code>)</h3>
+    <p>
+      Combining supply-to-demand capacity modeling from <strong>Luo &amp; Wang (2003)</strong> (<a href="https://doi.org/10.1068/b29120">DOI: 10.1068/b29120</a>) with graph-median location optimization from <strong>Hakimi (1964)</strong> (<a href="https://doi.org/10.1287/opre.12.3.450">DOI: 10.1287/opre.12.3.450</a>), each candidate vacant parcel $v$ with area $A_v \ge A_{\min,k}$ is evaluated by computing the unserved residential population $P_{\text{newly\_covered}}(v, k)$ reachable within road distance $R_{\text{net},k}$ from $v$, combined with remaining city-wide capacity deficit $D_{\text{pop}}(k) = \max(P_{\text{unserved},k},\, P_{\text{total}} - C_{\text{existing},k})$:
+    </p>
+    <div class="math-block">
+      $$\text{Score}(v, k) = \frac{2.2 \cdot P_{\text{newly\_covered}}(v, k) + 0.6 \cdot D_{\text{pop}}(k)}{1.0 + 0.45 \cdot N_{\text{allocated}}(k)}$$
+    </div>
+    <p>
+      <strong>Surplus Facility Safeguard:</strong> When all facility deficits are satisfied ($\sum_k D_{\text{pop}}(k) \le 500$ persons), the engine prevents redundant institutional clustering and assigns vacant urban parcels ($A_v \ge 1200\text{ m}^2$) to <strong>Residential Development Area</strong> (or <strong>Park &amp; Green Space</strong>).
+    </p>
+
+    <h3>1.4 12-Step Recursive Binary Polygon Subdivision (<code>mpyy_engine.py :: split_polygon_by_ratios</code>)</h3>
+    <p>
+      When a vacant urban block $P$ exceeds the minimum parcel requirement $A_{\min,k}$ of its primary assigned facility $k_1$ by at least the minimum park threshold ($A_{\text{rem}} = A_P - A_{\text{target},k_1} \ge A_{\min,\text{park}}$), the polygon is partitioned into 2 or 3 exact sub-parcels $\{P_1, P_2[, P_3]\}$ along the dominant bounding-box axis ($\Delta x \ge \Delta y \implies x\text{-cut}$, else $y\text{-cut}$). For each cut fraction $\alpha = \frac{r_i}{\sum_{j \ge i} r_j}$, a 12-iteration binary search locates the cutting line $c^* \in [c_{\min}, c_{\max}]$ satisfying:
+    </p>
+    <div class="math-block">
+      $$\text{Area}\!\left(P_{\text{rem}} \cap H(c^*)\right) = \alpha \cdot \text{Area}(P_{\text{rem}}), \qquad \text{Relative Error} \le 2^{-12} \approx 0.0244\%$$
+    </div>
+  </div>
+
+  <h2>2. MPYY Annex-2 Official Urban Facility Standards Table</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Facility ID</th>
+        <th>English Label (Default UI)</th>
+        <th>Turkish Label (MPYY EK-2)</th>
+        <th>Euclidean / Road Radius</th>
+        <th>Per-Capita Norm</th>
+        <th>Min Parcel Area ($A_{\min}$)</th>
+        <th>Split Cap ($A_{\max}$)</th>
+        <th>Unit Capacity</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>ilkokul</code></td>
+        <td>Primary School (5000-8000 m²)</td>
+        <td>İlkokul (EK-2: 5000-8000 m²)</td>
+        <td>500 m / 500 m</td>
+        <td>2.00 m²/cap</td>
+        <td>5,000 m²</td>
+        <td>8,000 m²</td>
+        <td>2,500 pers</td>
+      </tr>
+      <tr>
+        <td><code>ortaokul</code></td>
+        <td>Middle School (6000-10000 m²)</td>
+        <td>Ortaokul (EK-2: 6000-10000 m²)</td>
+        <td>1,000 m / 1,000 m</td>
+        <td>2.00 m²/cap</td>
+        <td>6,000 m²</td>
+        <td>10,000 m²</td>
+        <td>3,500 pers</td>
+      </tr>
+      <tr>
+        <td><code>lise</code></td>
+        <td>Day High School (6000-10000 m²)</td>
+        <td>Gündüzlü Lise (EK-2: 6000-10000 m²)</td>
+        <td>2,500 m / 2,500 m</td>
+        <td>2.00 m²/cap</td>
+        <td>6,000 m²</td>
+        <td>10,000 m²</td>
+        <td>5,000 pers</td>
+      </tr>
+      <tr>
+        <td><code>asm</code></td>
+        <td>Family Health Center (750-2000 m²)</td>
+        <td>Aile Sağlığı Merkezi (EK-2: 750-2000 m²)</td>
+        <td>500 m / 500 m</td>
+        <td>0.75 m²/cap</td>
+        <td>750 m²</td>
+        <td>2,000 m²</td>
+        <td>5,000 pers</td>
+      </tr>
+      <tr>
+        <td><code>hastane</code></td>
+        <td>State Hospital (1.5 m²/cap)</td>
+        <td>Devlet Hastanesi (EK-2: 1.5 m²/kişi)</td>
+        <td>2,500 m / 2,500 m</td>
+        <td>1.50 m²/cap</td>
+        <td>5,000 m²</td>
+        <td>15,000 m²</td>
+        <td>15,000 pers</td>
+      </tr>
+      <tr>
+        <td><code>ibadet</code></td>
+        <td>Place of Worship (2500 m²)</td>
+        <td>Orta İbadet Yeri (EK-2: 2500 m²)</td>
+        <td>400 m / 400 m</td>
+        <td>0.50 m²/cap</td>
+        <td>2,500 m²</td>
+        <td>5,000 m²</td>
+        <td>3,500 pers</td>
+      </tr>
+      <tr>
+        <td><code>park</code></td>
+        <td>Park &amp; Playground (10 m³/cap)</td>
+        <td>Çocuk Bahçesi &amp; Park (EK-2: 10 m³/kişi)</td>
+        <td>500 m / 500 m</td>
+        <td>10.00 m²/cap</td>
+        <td>1,000 m²</td>
+        <td>25,000 m²</td>
+        <td>3,000 pers</td>
+      </tr>
+      <tr>
+        <td><code>konut</code></td>
+        <td>Residential Development Area</td>
+        <td>Gelişme Konut Alanı (Rezerv Yapı)</td>
+        <td>1,000 m / 1,000 m</td>
+        <td>0.00 m²/cap</td>
+        <td>1,000 m²</td>
+        <td>30,000 m²</td>
+        <td>4,000 pers</td>
+      </tr>
+      <tr>
+        <td><code>sosyal</code></td>
+        <td>Social &amp; Cultural Facility</td>
+        <td>Sosyal ve Kültürel Tesis (EK-2)</td>
+        <td>1,000 m / 1,000 m</td>
+        <td>1.25 m²/cap</td>
+        <td>1,500 m²</td>
+        <td>6,000 m²</td>
+        <td>4,000 pers</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. Step-by-Step GUI Workflow (Real PyQGIS Captures)</h2>
+  <div class="screenshot-grid">
+    <figure>
+      <img src="assets/gui_step1_en_table.png" alt="MPYY Donati Analiz Step 1 English Default Table UI" />
+      <figcaption>
+        <strong>Stage 1 — English Default Interface &amp; Editable Annex-2 Matrix:</strong> Selecting the Prepared Network (Road Graph), Existing Residential Blocks, and Vacant Parcels in <code>MPYYDonatiDialog</code>, with 4-language switcher (<code>EN</code>, <code>TR</code>, <code>ZH</code>, <code>ES</code>) and sample polygon generator in <code>EPSG:5253</code>.
+      </figcaption>
+    </figure>
+    <figure>
+      <img src="assets/gui_step2_report_tab.png" alt="MPYY Donati Analiz Step 2 Planning &amp; Accessibility Report Tab" />
+      <figcaption>
+        <strong>Stage 2 — Detailed Accessibility &amp; Parcel Subdivision Report:</strong> Inspecting Euclidean vs. Road-Network service gaps (<code>Bird OK / Road FAIL</code>), newly allocated compact facility parcels, and per-parcel subdivision narratives.
+      </figcaption>
+    </figure>
+  </div>
+
+  <h2>4. Verified Academic References</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Citation</th>
+        <th>Title &amp; Journal</th>
+        <th>Verified DOI</th>
+        <th>Role in Plugin</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Dijkstra, E. W.</strong> (1959)</td>
+        <td><em>A note on two problems in connexion with graphs</em>, Numerische Mathematik, 1(1), 269–271.</td>
+        <td><a href="https://doi.org/10.1007/BF01386390" target="_blank" rel="noopener">10.1007/BF01386390</a></td>
+        <td>Shortest-path road-network service catchment engine (<code>FastRoadGraph.multi_source_dijkstra</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Luo, W. &amp; Wang, F.</strong> (2003)</td>
+        <td><em>Measures of Spatial Accessibility to Health Care in a GIS Environment: Synthesis and a Case Study in the Chicago Region</em>, Environment and Planning B, 30(6), 865–884.</td>
+        <td><a href="https://doi.org/10.1068/b29120" target="_blank" rel="noopener">10.1068/b29120</a></td>
+        <td>Two-step supply capacity vs. population demand deficit synthesis</td>
+      </tr>
+      <tr>
+        <td><strong>Hakimi, S. L.</strong> (1964)</td>
+        <td><em>Optimum Locations of Switching Centers and the Absolute Centers and Medians of a Graph</em>, Operations Research, 12(3), 450–459.</td>
+        <td><a href="https://doi.org/10.1287/opre.12.3.450" target="_blank" rel="noopener">10.1287/opre.12.3.450</a></td>
+        <td>Graph-median facility location &amp; unserved residential node coverage maximization</td>
+      </tr>
+    </tbody>
+  </table>
+
+</main>
+
+<footer>
+  <div class="container">
+    Author: <strong>Baran Adsuna</strong> (<a href="https://github.com/baranadsuna">github.com/baranadsuna</a>) • <a href="../../../06_github_io_dokumantasyon_merkezi/index.html">Back to Master Documentation Center</a>
+  </div>
+</footer>
+
+</body>
+</html>
