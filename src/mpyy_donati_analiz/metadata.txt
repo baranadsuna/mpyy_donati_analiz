@@ -4,15 +4,15 @@ qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 supportsQt6=True
 description=Evaluates urban social and technical infrastructure accessibility using O(1) spatial-indexed road network graphs (Dijkstra) and Euclidean buffers, and optimizes parcel allocation and binary polygon splitting according to Spatial Plans Construction Regulation (MPYY) Annex-2 standards in EPSG:5253.
-version=1.9.0
+version=2.0.0
 author=Baran Adsuna
 email=baranadsunaa@gmail.com
-about=Processes real polygon and road network layers in EPSG:5253 (TUREF / TM30) with zero synthetic data. Computes polygon centroids automatically, evaluates dual Euclidean and road-network service catchments against MPYY Annex-2 per-capita and minimum unit area standards (Primary School 5,000-8,000 m2, Middle School 6,000-10,000 m2, Family Health Center 750-2,000 m2, etc.), prevents redundant facility clustering, and performs recursive binary polygon splitting on vacant urban blocks. Features a 100% English default interface with multi-language support (EN, TR, ZH, ES) and full QGIS 3 / QGIS 4 (Qt5 / Qt6) compatibility.
+about=Processes real polygon and road network layers in EPSG:5253 (TUREF / TM30) with zero synthetic data. Evaluates dual Euclidean and road-network service catchments against MPYY Annex-2 per-capita and minimum unit area standards. Features Plan Decisions vs. Actual Land Use discrepancy matrix audit (detecting unrealized commercial/amenity vacant blocks and Article 26 amenity loss), and a road-network multi-criteria evaluation engine for Proposed Residential Growth Areas (15-minute city walkability and capacity overload prevention). 100% English default interface with multi-language support (EN, TR, ZH, ES) and full QGIS 3 / QGIS 4 (Qt5 / Qt6) compatibility.
 tracker=https://github.com/baranadsuna/mpyy_donati_analiz/issues
 repository=https://github.com/baranadsuna/mpyy_donati_analiz
 homepage=https://github.com/baranadsuna/mpyy_donati_analiz
 hasProcessingProvider=no
-tags=mpyy, urban planning, accessibility, network analysis, dijkstra, facility optimization, polygon splitting, epsg5253
+tags=mpyy, urban planning, accessibility, network analysis, dijkstra, plan comparison, residential growth, facility optimization, polygon splitting, epsg5253
 category=Vector
 icon=icon.svg
 experimental=False
@@ -20,5 +20,6 @@ deprecated=False
 license=GPL-2.0-or-later
 
 changelog=
+    2.0.0 - Added dedicated 'Plan Decisions vs. Actual Land Use Discrepancy' tab with transition cross-tabulation matrix and Article 26 amenity loss detection. Added multi-criteria Road Network Residential Growth Evaluator (eliminating guesswork for proposed housing blocks by scoring pedestrian accessibility to primary school 500m, middle school 1000m, health clinic 500m, park 500m, commercial 800m with capacity overload penalties). Added fast network isochrone pedshed computation.
     1.9.0 - Upgraded to 100% English default UI, full QGIS 3 & QGIS 4 (Qt5 & Qt6) scoped enum compatibility (supportsQt6=True), strict EPSG:5253 (TUREF / TM30) CRS validation gate, and zero-synthetic-data enforcement.
     1.8.0 - MPYY Annex-2 minimum unit area and per-capita standards integration with multi-language support.

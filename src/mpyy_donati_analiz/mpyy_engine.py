@@ -201,6 +201,82 @@ class FastRoadGraph:
             return float('inf')
         return dist_map[nid] + snap_d
 
+    def compute_isochrone_pedshed(self, source_pt, cutoff_m=500.0, buffer_m=20.0):
+        """
+        Computes the network isochrone service area polygon and pedshed ratio
+        (Network Catchment Area / Theoretical Circular Buffer Area)
+        according to PLN3113 & PlanX methodology.
+        """
+        circ_geom = QgsGeometry.fromPointXY(source_pt).buffer(cutoff_m, 24)
+        circ_area = circ_geom.area() if (circ_geom and not circ_geom.isEmpty()) else (math.pi * cutoff_m * cutoff_m)
+
+        nid, snap_d = self.snap_point_to_node(source_pt)
+        if nid is None or snap_d > cutoff_m:
+            return {
+                "network_geom": None,
+                "circular_geom": circ_geom,
+                "network_area_m2": 0.0,
+                "circular_area_m2": circ_area,
+                "pedshed_ratio": 0.0,
+            }
+
+        rem_cutoff = cutoff_m - snap_d
+        dist_map = {}
+        pq = [(0.0, nid)]
+        dist_map[nid] = 0.0
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist_map.get(u, float('inf')):
+                continue
+            if d > rem_cutoff:
+                continue
+            for v, w in self.adj.get(u, ()):
+                nd = d + w
+                if nd <= rem_cutoff and nd < dist_map.get(v, float('inf')):
+                    dist_map[v] = nd
+                    heapq.heappush(pq, (nd, v))
+
+        reached_nodes = set(dist_map.keys())
+        reached_lines = []
+        for u in reached_nodes:
+            pu = self.nodes[u]
+            for v, w in self.adj.get(u, ()):
+                if v in reached_nodes and u < v:
+                    pv = self.nodes[v]
+                    reached_lines.append(QgsGeometry.fromPolylineXY([pu, pv]))
+
+        if not reached_lines:
+            pts = [self.nodes[u] for u in reached_nodes]
+            if len(pts) >= 3:
+                hull = QgsGeometry.fromMultiPointXY(pts).convexHull()
+                net_area = hull.area() if (hull and not hull.isEmpty()) else 0.0
+                return {
+                    "network_geom": hull,
+                    "circular_geom": circ_geom,
+                    "network_area_m2": net_area,
+                    "circular_area_m2": circ_area,
+                    "pedshed_ratio": min(1.0, net_area / max(circ_area, 1.0)),
+                }
+            return {
+                "network_geom": None,
+                "circular_geom": circ_geom,
+                "network_area_m2": 0.0,
+                "circular_area_m2": circ_area,
+                "pedshed_ratio": 0.0,
+            }
+
+        union_lines = QgsGeometry.unaryUnion(reached_lines)
+        net_poly = union_lines.buffer(buffer_m, 12)
+        net_area = net_poly.area() if (net_poly and not net_poly.isEmpty()) else 0.0
+        pedshed_ratio = min(1.0, net_area / max(circ_area, 1.0))
+        return {
+            "network_geom": net_poly,
+            "circular_geom": circ_geom,
+            "network_area_m2": net_area,
+            "circular_area_m2": circ_area,
+            "pedshed_ratio": pedshed_ratio,
+        }
+
 
 def _clean_polygon_geom(geom):
     """
@@ -851,3 +927,465 @@ def subdivide_block_multi_use(
 
     result["park"] = park_rem
     return result
+
+
+class PlanActualDiffEngine:
+    """
+    Spatial Overlay and Planning Discrepancy Engine.
+    Implements comparison between Old/Approved Master Plan Decisions and Current Real Land Use.
+    Synthesizes PLN3113 `plan_farki.py` and PlanX `plan_diff.py` methodology into clean-room PyQGIS.
+
+    Detects:
+      1. UYUMLU / REALIZED: Plan matches actual use (e.g. Planned Commercial -> Actual Commercial).
+      2. GERÇEKLEŞMEMİŞ (BOŞ ADA): Plan designates Commercial, Residential or Facility -> Field is actually Vacant (Boş Ada).
+      3. GERÇEKLEŞMEMİŞ (PARK / AÇIK ALAN): Plan designates Commercial/Building -> Field is currently Park / Open Space.
+      4. AYKIRI DÖNÜŞÜM / DONATI KAYBI: Plan designates Park/Amenity -> Field built over as Residential/Commercial/Industry (MPYY Madde 26).
+      5. FONKSİYON DEĞİŞİMİ: Any other development divergence (e.g. Planned Residential -> Actual Commercial corridor).
+    """
+
+    @staticmethod
+    def normalize_text(text):
+        if text is None:
+            return ""
+        s = str(text).strip().lower()
+        repl = [
+            ("ı", "i"), ("ğ", "g"), ("ü", "u"), ("ş", "s"), ("ö", "o"), ("ç", "c"),
+            ("İ", "i"), ("Ğ", "g"), ("Ü", "u"), ("Ş", "s"), ("Ö", "o"), ("Ç", "c"),
+        ]
+        for a, b in repl:
+            s = s.replace(a, b)
+        return s
+
+    @classmethod
+    def classify_category(cls, val):
+        t = cls.normalize_text(val)
+        if any(w in t for w in ["ticari", "ticaret", "dukkan", "ofis", "avm", "carsi", "is_merkezi", "commercial", "business", "retail"]):
+            return "TICARET"
+        if any(w in t for w in ["bos", "arsa", "tarla", "ham", "yapilasmamis", "acik_alan", "vacant", "unbuilt", "atil", "bos_ada"]):
+            return "BOS_ADA"
+        if any(w in t for w in ["park", "cocuk", "oyun", "rekreasyon", "meydan", "yesil", "pasif_yesil", "aktif_yesil", "green", "garden"]):
+            return "PARK_YESIL"
+        if any(w in t for w in ["konut", "yerlesme", "mesken", "apartman", "residential", "housing"]):
+            return "KONUT"
+        if any(w in t for w in ["ilkokul", "ortaokul", "lise", "okul", "egitim", "kres", "anaokulu", "school", "education"]):
+            return "EGITIM"
+        if any(w in t for w in ["saglik", "asm", "hastane", "dispanser", "poliklinik", "saglik_ocagi", "health", "hospital"]):
+            return "SAGLIK"
+        if any(w in t for w in ["cami", "mescit", "ibadet", "dini", "worship", "mosque"]):
+            return "IBADET"
+        if any(w in t for w in ["sosyal", "kultur", "kulturel", "social", "cultural", "kutuphane"]):
+            return "SOSYAL_KULTUR"
+        if any(w in t for w in ["sanayi", "endustri", "kucuk_sanayi", "depolama", "atolye", "industry", "industrial"]):
+            return "SANAYI"
+        if any(w in t for w in ["belediye", "bha", "kamu", "resmi", "public", "administrative"]):
+            return "KAMU_BELEDIYE"
+        return "DIGER"
+
+    @classmethod
+    def evaluate_discrepancy(cls, old_val, actual_val):
+        old_cat = cls.classify_category(old_val)
+        act_cat = cls.classify_category(actual_val)
+
+        old_str = str(old_val).strip() if old_val is not None else "Belirtilmemiş"
+        act_str = str(actual_val).strip() if actual_val is not None else "Belirtilmemiş"
+
+        if old_cat == act_cat and old_cat != "DIGER":
+            durum = "UYUMLU / GERÇEKLEŞMİŞ"
+            kod = "UYUMLU"
+            yorum = f"Eski plan kararı ({old_str}) sahada fiilen gerçekleşmiştir ({act_str})."
+        elif act_cat == "BOS_ADA":
+            durum = "GERÇEKLEŞMEMİŞ (BOŞ ADA)"
+            kod = "BOS_ADA"
+            yorum = (
+                f"Planda '{old_str}' kararı verilmiş olmasına rağmen fiiliyatta yapılaşmamış boş ada durumundadır. "
+                "İmar hakkı gerçekleşmemiş olup revizyon veya kentsel dönüşüm rezervidir."
+            )
+        elif old_cat in ("TICARET", "KONUT") and act_cat == "PARK_YESIL":
+            durum = "GERÇEKLEŞMEMİŞ (PARK / AÇIK ALAN)"
+            kod = "ACIK_ALAN"
+            yorum = (
+                f"Planda yapılaşma ({old_str}) öngörülmüş fakat fiiliyatta yeşil alan/park olarak korunmuştur. "
+                "Halkın fiili yeşil alan kullanımı gözetilerek plan tadilatı değerlendirilmelidir."
+            )
+        elif old_cat in ("PARK_YESIL", "EGITIM", "SAGLIK", "SOSYAL_KULTUR", "IBADET") and act_cat in ("KONUT", "TICARET", "SANAYI"):
+            durum = "AYKIRI DÖNÜŞÜM / DONATI KAYBI"
+            kod = "DONATI_KAYBI"
+            yorum = (
+                f"Planda kamu donatısı ({old_str}) olarak ayrılan alan fiiliyatta yapılaşmış ({act_str}). "
+                "MPYY Madde 26 gereğince donatı azaltılamaz; yürüyüş mesafesinde eşdeğer alan tahsis edilmelidir!"
+            )
+        else:
+            durum = "FONKSİYON DEĞİŞİMİ"
+            kod = "FONKSIYON_DEGISIMI"
+            yorum = f"Plandaki '{old_str}' fonksiyonu sahadaki fiili '{act_str}' kullanımına evrilmiştir."
+
+        return durum, kod, yorum, old_cat, act_cat
+
+    @classmethod
+    def run_comparison(
+        cls,
+        old_layer,
+        old_field,
+        actual_layer,
+        actual_field,
+        target_crs=None,
+        min_area_m2=1.0,
+        feedback=None
+    ):
+        """
+        Executes spatial overlay between Old/Approved Master Plan and Current Actual Use.
+        Calculates exact intersection area (m²) in EPSG:5253.
+        Returns:
+          - diff_features: list of dicts with geometry, areas, categories, and justifications.
+          - summary: overall statistics.
+          - matrix: (old_use, actual_use) -> total_area_m2 cross-tabulation.
+        """
+        diff_features = []
+        matrix = {}
+        summary = {
+            "toplam_alan_m2": 0.0,
+            "uyumlu_alan_m2": 0.0,
+            "uyumlu_m2": 0.0,
+            "bos_ada_m2": 0.0,
+            "acik_alan_m2": 0.0,
+            "donati_kaybi_m2": 0.0,
+            "fonksiyon_degisimi_m2": 0.0,
+            "parsel_sayisi": 0,
+            "uyumlu_adet": 0,
+            "bos_ada_adet": 0,
+            "acik_alan_adet": 0,
+            "donati_kaybi_adet": 0,
+            "fonksiyon_degisimi_adet": 0,
+        }
+
+        if old_layer is None or actual_layer is None:
+            return diff_features, summary, matrix
+
+        project = QgsProject.instance()
+        target_crs = target_crs or old_layer.crs()
+
+        xform_old = None
+        if old_layer.crs() != target_crs and old_layer.crs().isValid() and target_crs.isValid():
+            xform_old = QgsCoordinateTransform(old_layer.crs(), target_crs, project)
+
+        xform_act = None
+        if actual_layer.crs() != target_crs and actual_layer.crs().isValid() and target_crs.isValid():
+            xform_act = QgsCoordinateTransform(actual_layer.crs(), target_crs, project)
+
+        old_f_idx = old_layer.fields().indexFromName(old_field) if old_field else -1
+        act_f_idx = actual_layer.fields().indexFromName(actual_field) if actual_field else -1
+
+        # Build spatial index on actual use layer
+        act_index = QgsSpatialIndex()
+        act_map = {}
+        for af in actual_layer.getFeatures():
+            ag = af.geometry()
+            if not ag or ag.isEmpty():
+                continue
+            if xform_act is not None:
+                ag = QgsGeometry(ag)
+                try:
+                    ag.transform(xform_act)
+                except Exception:
+                    pass
+            ag = ag.makeValid()
+            act_val = af[act_f_idx] if act_f_idx >= 0 else af.attribute(0)
+            act_map[af.id()] = (ag, act_val)
+            feat = QgsFeature(af.id())
+            feat.setGeometry(ag)
+            act_index.addFeature(feat)
+
+        # Iterate over old plan features and intersect
+        for of in old_layer.getFeatures():
+            og = of.geometry()
+            if not og or og.isEmpty():
+                continue
+            if xform_old is not None:
+                og = QgsGeometry(og)
+                try:
+                    og.transform(xform_old)
+                except Exception:
+                    pass
+            og = og.makeValid()
+            old_val = of[old_f_idx] if old_f_idx >= 0 else of.attribute(0)
+
+            cand_ids = act_index.intersects(og.boundingBox())
+            if not cand_ids:
+                area_m2 = og.area()
+                if area_m2 >= min_area_m2:
+                    durum, kod, yorum, o_c, a_c = cls.evaluate_discrepancy(old_val, "Boş Ada")
+                    diff_features.append({
+                        "geom": og,
+                        "eski_plan": str(old_val),
+                        "mevcut_fiili": "Saha Verisi Yok / Boş",
+                        "durum": durum,
+                        "kod": kod,
+                        "alan_m2": round(area_m2, 1),
+                        "yorum": yorum,
+                    })
+                    summary["toplam_alan_m2"] += area_m2
+                    summary["bos_ada_m2"] += area_m2
+                    summary["bos_ada_adet"] += 1
+                    summary["parsel_sayisi"] += 1
+                continue
+
+            for cid in cand_ids:
+                ag, act_val = act_map[cid]
+                if not og.intersects(ag):
+                    continue
+                inter_g = _clean_polygon_geom(og.intersection(ag))
+                if inter_g is None or inter_g.isEmpty():
+                    continue
+                ia = inter_g.area()
+                if ia < min_area_m2:
+                    continue
+
+                durum, kod, yorum, o_c, a_c = cls.evaluate_discrepancy(old_val, act_val)
+                diff_features.append({
+                    "geom": inter_g,
+                    "eski_plan": str(old_val),
+                    "mevcut_fiili": str(act_val),
+                    "durum": durum,
+                    "kod": kod,
+                    "alan_m2": round(ia, 1),
+                    "yorum": yorum,
+                })
+
+                pair = (str(old_val), str(act_val))
+                matrix[pair] = matrix.get(pair, 0.0) + ia
+                summary["toplam_alan_m2"] += ia
+                summary["parsel_sayisi"] += 1
+
+                if kod == "UYUMLU":
+                    summary["uyumlu_alan_m2"] += ia
+                    summary["uyumlu_m2"] += ia
+                    summary["uyumlu_adet"] += 1
+                elif kod == "BOS_ADA":
+                    summary["bos_ada_m2"] += ia
+                    summary["bos_ada_adet"] += 1
+                elif kod == "ACIK_ALAN":
+                    summary["acik_alan_m2"] += ia
+                    summary["acik_alan_adet"] += 1
+                elif kod == "DONATI_KAYBI":
+                    summary["donati_kaybi_m2"] += ia
+                    summary["donati_kaybi_adet"] += 1
+                else:
+                    summary["fonksiyon_degisimi_m2"] += ia
+                    summary["fonksiyon_degisimi_adet"] += 1
+
+        return diff_features, summary, matrix
+
+
+class ResidentialGrowthNetworkEvaluator:
+    """
+    Multi-Criteria Road Network Accessibility & Capacity Evaluator
+    for Proposed Residential Development Areas ('Gelişme Konut Alanı').
+
+    Key Urban Planning Principle:
+    Residential zones are demand recipients, not facility emitters. Therefore,
+    recommending or zoning an urban block as 'Gelişme Konut Alanı' cannot be an
+    arbitrary guess; it must be rigorously justified by pedestrian network accessibility
+    to essential daily facilities (Primary School 500m, Secondary School 1000m, Health 500m,
+    Park 500m, Commercial 800m) while safeguarding against facility capacity overload!
+    """
+
+    @staticmethod
+    def _distance_decay_utility(dist, threshold):
+        """
+        Calculates walkability utility score in [0.0, 1.0] with smooth distance decay:
+          - <= 0.8 * threshold: 1.0 (Comfortable walking zone)
+          - 0.8 * threshold to threshold: linear decay 1.0 -> 0.75
+          - threshold to 1.5 * threshold: linear decay 0.75 -> 0.0
+          - > 1.5 * threshold or inf: 0.0
+        """
+        if dist is None or math.isinf(dist) or dist < 0:
+            return 0.0
+        if dist <= 0.80 * threshold:
+            return 1.0
+        if dist <= threshold:
+            frac = (dist - 0.80 * threshold) / max(0.20 * threshold, 1.0)
+            return 1.0 - 0.25 * frac
+        if dist <= 1.50 * threshold:
+            frac = (dist - threshold) / max(0.50 * threshold, 1.0)
+            return 0.75 * (1.0 - frac)
+        return 0.0
+
+    @classmethod
+    def evaluate_candidate_blocks(
+        cls,
+        candidate_features,
+        graph,
+        fac_by_type,
+        specs,
+        comm_pts=None,
+        net_dist_maps=None,
+        net_owner_maps=None,
+        overloaded_facilities=None,
+        target_crs=None,
+        gross_density_pop_per_ha=180.0
+    ):
+        """
+        Evaluates candidate vacant / reserve blocks for Residential Growth suitability.
+        Returns list of evaluated record dicts.
+        """
+        results = []
+        if not candidate_features or graph is None:
+            return results
+
+        comm_pts = comm_pts or []
+        net_dist_maps = net_dist_maps or {}
+        net_owner_maps = net_owner_maps or {}
+        overloaded_facilities = overloaded_facilities or {}
+
+        # Commercial distance map
+        comm_dist_map = graph.multi_source_dijkstra(comm_pts, max_cutoff=2500.0) if comm_pts else {}
+
+        # Standard thresholds
+        sch_r = 500.0
+        mid_r = 1000.0
+        asm_r = 500.0
+        park_r = 500.0
+        comm_r = 800.0
+
+        for cf in candidate_features:
+            geom = cf.geometry() if hasattr(cf, "geometry") else cf
+            fid = cf.id() if hasattr(cf, "id") else 0
+            if not geom or geom.isEmpty():
+                continue
+
+            area_m2 = geom.area()
+            if area_m2 < 100.0:
+                continue
+
+            cpt = geom.centroid().asPoint()
+            nid, snap_d = graph.snap_polygon_to_node(geom)
+
+            # 1. Primary School Distance
+            sch_items = fac_by_type.get("ilkokul", [])
+            d_sch = float('inf')
+            sch_overloaded = False
+            if "ilkokul" in net_dist_maps and nid is not None and nid in net_dist_maps["ilkokul"]:
+                d_sch = net_dist_maps["ilkokul"][nid] + snap_d
+                o_idx = net_owner_maps.get("ilkokul", {}).get(nid, -1)
+                if 0 <= o_idx < len(sch_items):
+                    if sch_items[o_idx][4] > sch_items[o_idx][2] * 1.05:
+                        sch_overloaded = True
+            elif sch_items:
+                d_sch = min(math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) for it in sch_items) * 1.25
+
+            # 2. Middle School Distance
+            mid_items = fac_by_type.get("ortaokul", [])
+            d_mid = float('inf')
+            if "ortaokul" in net_dist_maps and nid is not None and nid in net_dist_maps["ortaokul"]:
+                d_mid = net_dist_maps["ortaokul"][nid] + snap_d
+            elif mid_items:
+                d_mid = min(math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) for it in mid_items) * 1.25
+
+            # 3. Family Health Center (ASM) Distance
+            asm_items = fac_by_type.get("asm", [])
+            d_asm = float('inf')
+            asm_overloaded = False
+            if "asm" in net_dist_maps and nid is not None and nid in net_dist_maps["asm"]:
+                d_asm = net_dist_maps["asm"][nid] + snap_d
+                o_idx = net_owner_maps.get("asm", {}).get(nid, -1)
+                if 0 <= o_idx < len(asm_items):
+                    if asm_items[o_idx][4] > asm_items[o_idx][2] * 1.05:
+                        asm_overloaded = True
+            elif asm_items:
+                d_asm = min(math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) for it in asm_items) * 1.25
+
+            # 4. Park Distance
+            park_items = fac_by_type.get("park", [])
+            d_park = float('inf')
+            if "park" in net_dist_maps and nid is not None and nid in net_dist_maps["park"]:
+                d_park = net_dist_maps["park"][nid] + snap_d
+            elif park_items:
+                d_park = min(math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) for it in park_items) * 1.25
+
+            # 5. Commercial Distance
+            d_comm = (comm_dist_map[nid] + snap_d) if (nid is not None and nid in comm_dist_map) else float('inf')
+
+            # Calculate Utilities
+            u_sch = cls._distance_decay_utility(d_sch, sch_r)
+            u_mid = cls._distance_decay_utility(d_mid, mid_r)
+            u_asm = cls._distance_decay_utility(d_asm, asm_r)
+            u_park = cls._distance_decay_utility(d_park, park_r)
+            u_comm = cls._distance_decay_utility(d_comm, comm_r)
+
+            # Capacity Safety Factor
+            c_safe = 1.0
+            cap_warnings = []
+            if sch_overloaded:
+                c_safe -= 0.35
+                cap_warnings.append("En yakın ilkokul kapasite aşımında")
+            if asm_overloaded:
+                c_safe -= 0.25
+                cap_warnings.append("En yakın ASM kapasite aşımında")
+            c_safe = max(0.20, c_safe)
+
+            # Multi-Criteria Suitability Score S_res in [0, 100]
+            # Weights: School 25%, ASM 20%, Park 20%, Middle School 15%, Commercial 10%, Capacity Margin 10%
+            raw_score = (
+                0.25 * u_sch +
+                0.20 * u_asm +
+                0.20 * u_park +
+                0.15 * u_mid +
+                0.10 * u_comm +
+                0.10 * c_safe
+            ) * 100.0
+
+            suitability_score = round(max(0.0, min(100.0, raw_score)), 1)
+
+            # Estimated Population Capacity based on Planned Density
+            est_pop = int(round((area_m2 / 10000.0) * gross_density_pop_per_ha))
+
+            # Urban Classification
+            if suitability_score >= 80.0:
+                sinif = "Öncelikli Gelişme Konut Alanı (15-Dk Şehir Standardı)"
+                kod = "ONCELIKLI_KONUT"
+                renk = "#eab308"  # Gold
+            elif suitability_score >= 60.0:
+                sinif = "Uygun Gelişme Konut Alanı (İyi Donatı Erişimi)"
+                kod = "UYGUN_KONUT"
+                renk = "#f97316"  # Amber/Orange
+            elif suitability_score >= 40.0:
+                sinif = "Şartlı Gelişme Konut Alanı (Kısmi Donatı Eksikliği)"
+                kod = "SARTLI_KONUT"
+                renk = "#84cc16"  # Lime/Khaki
+            else:
+                sinif = "Gelişmeye Uygun Değil (Donatı Altyapısı Yetersiz)"
+                kod = "UYGUN_DEGIL"
+                renk = "#94a3b8"  # Slate/Gray
+
+            # Narrative Justification
+            notes = []
+            notes.append(f"Yol Ağı Donatı Erişim Skoru: {suitability_score}/100.")
+            notes.append(f"İlkokul: {int(d_sch) if d_sch < 1e8 else 'Yok'}m ({'Uygun' if d_sch <= sch_r else 'Uzak'}).")
+            notes.append(f"Sağlık (ASM): {int(d_asm) if d_asm < 1e8 else 'Yok'}m ({'Uygun' if d_asm <= asm_r else 'Uzak'}).")
+            notes.append(f"Park: {int(d_park) if d_park < 1e8 else 'Yok'}m ({'Uygun' if d_park <= park_r else 'Uzak'}).")
+            if cap_warnings:
+                notes.append("DİKKAT: " + ", ".join(cap_warnings) + "!")
+            else:
+                notes.append("Mevcut okul ve sağlık kapasitesi yeterlidir.")
+
+            gerekce = " ".join(notes)
+
+            results.append({
+                "geom": geom,
+                "ada_id": fid,
+                "alan_m2": round(area_m2, 1),
+                "ongorulen_nufus": est_pop,
+                "konut_skoru": suitability_score,
+                "erisim_sinifi": sinif,
+                "kod": kod,
+                "renk": renk,
+                "ilkokul_yol_m": round(d_sch, 1) if d_sch < 1e8 else -1.0,
+                "ortaokul_yol_m": round(d_mid, 1) if d_mid < 1e8 else -1.0,
+                "asm_yol_m": round(d_asm, 1) if d_asm < 1e8 else -1.0,
+                "park_yol_m": round(d_park, 1) if d_park < 1e8 else -1.0,
+                "ticari_yol_m": round(d_comm, 1) if d_comm < 1e8 else -1.0,
+                "kapasite_durumu": "Kapasite Yeterli (OK)" if not cap_warnings else "Kapasite Aşımı Riski",
+                "planlama_gerekcesi": gerekce,
+            })
+
+        return results

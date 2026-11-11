@@ -24,6 +24,8 @@ from .mpyy_engine import (
     split_polygon_by_ratios,
     compute_polygon_shape_metrics,
     subdivide_block_multi_use,
+    PlanActualDiffEngine,
+    ResidentialGrowthNetworkEvaluator,
 )
 
 _QVAR_INT = getattr(QVariant, "Int", 2)
@@ -51,7 +53,8 @@ TRANSLATIONS = {
         "banner_sub": f"Kapasite Aşımı Rahatlatma • Çoklu Donatı + Park Tamponu • Pasif Yeşil & Ticari Alan Önerisi • Yazar: {PLUGIN_AUTHOR}",
         "dev_label": "⚡ Yazar / Geliştirici",
         "tab1": "1. Poligon Katmanları ve EK-2 Standart Tablosu",
-        "tab2": "2. Detaylı Plan Açıklama ve Erişilebilirlik Raporu",
+        "tab2": "2. Eski Plan ve Fiili Kullanım Karşılaştırması",
+        "tab3": "3. Detaylı Plan Açıklama ve Erişilebilirlik Raporu",
         "grp1": "1. Temel Harita Katmanları (Poligonlar ve Kapasiteler Otomatik Hesaplanır)",
         "lbl_net": "<b>Prepared Network (Yol Ağı - Çizgi):</b>",
         "lbl_res": "<b>Mevcut Konut Adaları (Poligon):</b>",
@@ -63,6 +66,8 @@ TRANSLATIONS = {
         "lbl_pop_note": "*(Konut adalarının alanları (m²) oranında nüfus dağıtılır ve mevcut okul/donatı kapasite aşımı denetlenir)*",
         "lbl_split": "<b>Çoklu Donatı + Park Tamponu & MPYY Dışı Katmanlar:</b>",
         "chk_split": "Büyük adalarda İlkokul + Park Tamponu + ASM kurgula; MPYY dışı grupta Pasif Yeşil Alanlar ve Ticari Alan (Demo) öner",
+        "lbl_res_growth": "<b>Gelişme Konut Alanı Öneri Modu:</b>",
+        "chk_res_growth": "Boş imar adalarında yol ağı donatı erişilebilirliğine göre Gelişme Konut Alanı öner ve puanla",
         "grp3": "3. EK-2 Sosyal ve Teknik Altyapı Alanları Standartları Tablosu (Tamamen Düzenlenebilir)",
         "col_name": "Altyapı Alanı / Donatı\n(EK-2 Standart & Renk)",
         "col_layer": "Mevcut Poligon Katmanı\n(Haritadan Seç)",
@@ -88,8 +93,27 @@ TRANSLATIONS = {
             f"Yazar: {PLUGIN_AUTHOR}\n\n"
             "1) 'MPYY_EK2_Sosyal_ve_Teknik_Donati_Alanlari' grubu altında bölünen/önerilen MPYY donatı alanları,\n"
             "2) 'MPYY_Disi_Tamamlayici_Alanlar' grubu altında 'Onerilen_Pasif_Yesil_Alanlar' (tampon yeşil) ve "
-            "'Onerilen_Ticari_Alanlar' (erişim demo) katmanları haritaya eklendi!"
+            "'Onerilen_Ticari_Alanlar' (erişim demo) katmanları,\n"
+            "3) 'Onerilen_Gelisme_Konut_Alanlari' (yol ağı donatı erişim puanlamalı konut önerisi) haritaya eklendi!"
         ),
+        "grp_diff": "Eski / Onaylı Plan Kararları ve Mevcut Fiili Kullanım Katmanları",
+        "lbl_old_plan": "<b>Eski / Onaylı Plan Poligon Katmanı:</b>",
+        "lbl_old_field": "<b>Eski Plan Fonksiyon / Karar Sütunu:</b>",
+        "lbl_actual_use": "<b>Mevcut Fiili Kullanım / Saha Durumu Katmanı:</b>",
+        "lbl_actual_field": "<b>Fiili Kullanım / Saha Durumu Sütunu:</b>",
+        "chk_detect_vacant_commercial": "Planda Ticaret / Donatı olup Fiiliyatta Boş Olan Adaları Belirle",
+        "chk_detect_amenity_loss": "Planda Donatı/Park olup Fiiliyatta Yapılaşmış Alanları Belirle (Md. 26 Eşdeğer Alan)",
+        "btn_run_diff": "🔍 Eski Plan ve Fiili Kullanım Uyuşmazlık Analizini Başlat",
+        "diff_summary_title": "Eski Plan Kararları ile Fiili Durum Uyuşmazlık Özeti",
+        "col_diff_plan": "Eski Plan Kararı",
+        "col_diff_actual": "Fiili Kullanım",
+        "col_diff_status": "Uyuşmazlık Durumu",
+        "col_diff_area": "Alan (m²)",
+        "col_diff_note": "Planlama Değerlendirmesi",
+        "diff_done_title": "Plan ve Fiili Kullanım Analizi Tamamlandı",
+        "diff_done_msg": "'Plan_ve_Fiili_Kullanim_Karsilastirma' katmanı başarıyla üretildi ve haritaya eklendi!",
+        "warn_diff_missing_title": "Eksik Karşılaştırma Katmanı",
+        "warn_diff_missing_msg": "Lütfen Eski / Onaylı Plan ve Mevcut Fiili Kullanım poligon katmanlarını seçiniz!",
     },
     "en": {
         "win_title": f"MPYY Urban Facility Accessibility, Capacity & Subdivision — Author: {PLUGIN_AUTHOR}",
@@ -97,7 +121,8 @@ TRANSLATIONS = {
         "banner_sub": f"Capacity Overflow Relief • Multi-Facility + Park Buffer • Passive Green & Commercial Demo • Author: {PLUGIN_AUTHOR}",
         "dev_label": "⚡ Author / Developer",
         "tab1": "1. Polygon Layers & Annex-2 Standard Table",
-        "tab2": "2. Detailed Planning & Accessibility Report",
+        "tab2": "2. Plan Decisions vs. Actual Land Use Comparison",
+        "tab3": "3. Detailed Planning & Accessibility Report",
         "grp1": "1. Base Map Layers (Polygons & Area-Based Capacities Are Evaluated Automatically)",
         "lbl_net": "<b>Prepared Network (Road Graph - Line):</b>",
         "lbl_res": "<b>Existing Residential Blocks (Polygon):</b>",
@@ -109,6 +134,8 @@ TRANSLATIONS = {
         "lbl_pop_note": "*(Population weighted by residential block m²; checks overload on small existing schools/facilities)*",
         "lbl_split": "<b>Multi-Facility + Park Buffer & Non-MPYY Layers:</b>",
         "chk_split": "Allow 2 built facilities separated by a Park buffer on large blocks; generate Non-MPYY Passive Green & Commercial Demo layers",
+        "lbl_res_growth": "<b>Residential Growth Allocation Mode:</b>",
+        "chk_res_growth": "Evaluate vacant blocks for network-based Residential Development Area suitability (15-min city)",
         "grp3": "3. Annex-2 Social & Technical Infrastructure Standards Table (Fully Editable)",
         "col_name": "Infrastructure / Facility\n(Annex-2 Std & Color)",
         "col_layer": "Existing Polygon Layer\n(Select from Map)",
@@ -134,8 +161,27 @@ TRANSLATIONS = {
             f"Author: {PLUGIN_AUTHOR}\n\n"
             "1) MPYY Annex-2 allocated & subdivided polygons added under 'MPYY_EK2_Sosyal_ve_Teknik_Donati_Alanlari',\n"
             "2) Non-MPYY 'Onerilen_Pasif_Yesil_Alanlar' (Passive Buffer Green) and 'Onerilen_Ticari_Alanlar' (Commercial Access Demo) "
-            "added under 'MPYY_Disi_Tamamlayici_Alanlar'!"
+            "added under 'MPYY_Disi_Tamamlayici_Alanlar',\n"
+            "3) 'Onerilen_Gelisme_Konut_Alanlari' (network accessibility-scored residential proposals) added to map!"
         ),
+        "grp_diff": "Old / Approved Plan Decisions & Current Actual Land Use Layers",
+        "lbl_old_plan": "<b>Old / Approved Master Plan (Polygon):</b>",
+        "lbl_old_field": "<b>Plan Function / Zoning Column:</b>",
+        "lbl_actual_use": "<b>Current Actual Land Use / Survey Layer:</b>",
+        "lbl_actual_field": "<b>Actual Land Use / Status Column:</b>",
+        "chk_detect_vacant_commercial": "Identify Planned Commercial & Public Facilities that are Actually Vacant Blocks",
+        "chk_detect_amenity_loss": "Identify Planned Parks & Amenities that were Built Over (MPYY Art. 26 Equivalent Area)",
+        "btn_run_diff": "🔍 Run Plan vs. Actual Land Use Discrepancy Analysis",
+        "diff_summary_title": "Plan Decisions vs. Field Reality Transition Summary",
+        "col_diff_plan": "Old Plan Decision",
+        "col_diff_actual": "Actual Use",
+        "col_diff_status": "Discrepancy Status",
+        "col_diff_area": "Area (m²)",
+        "col_diff_note": "Planning Assessment",
+        "diff_done_title": "Plan vs. Actual Analysis Completed",
+        "diff_done_msg": "'Plan_ve_Fiili_Kullanim_Karsilastirma' layer successfully generated and styled on map!",
+        "warn_diff_missing_title": "Missing Comparison Layers",
+        "warn_diff_missing_msg": "Please select both Old / Approved Master Plan and Current Actual Use polygon layers!",
     },
     "zh": {
         "win_title": f"MPYY 城市公共设施可达性与空间优化系统 — 作者: {PLUGIN_AUTHOR}",
@@ -143,7 +189,8 @@ TRANSLATIONS = {
         "banner_sub": f"容量超载缓解 • 双设施+公园缓冲 • 被动绿地与商业用地建议 • 作者: {PLUGIN_AUTHOR}",
         "dev_label": "⚡ 开发者 / 作者",
         "tab1": "1. 多边形图层与附表2标准参数表",
-        "tab2": "2. 详细规划说明与可达性报告",
+        "tab2": "2. 原法定规划与实际现状用地对比分析",
+        "tab3": "3. 详细规划说明与可达性报告",
         "grp1": "1. 基础地图图层（多边形在后台自动转换为质心点）",
         "lbl_net": "<b>路网图层 Prepared Network（线）：</b>",
         "lbl_res": "<b>现有居住街坊（多边形）：</b>",
@@ -155,6 +202,8 @@ TRANSLATIONS = {
         "lbl_pop_note": "*（按居住街坊面积比例分配人口并检测现有设施容量超载）*",
         "lbl_split": "<b>多设施组合与非MPYY图层：</b>",
         "chk_split": "支持大型街坊配置“小学+公园缓冲+社区医院”，并生成非MPYY被动绿地与商业用地",
+        "lbl_res_growth": "<b>居住发展用地建议模式：</b>",
+        "chk_res_growth": "基于路网设施可达性与容量安全评估空置地块并建议居住发展用地（15分钟城市）",
         "grp3": "3. 附表2社会与技术基础设施标准表（法规官方数值 - 可完全编辑）",
         "col_name": "基础设施 / 设施\n（附表2标准与颜色）",
         "col_layer": "现有多边形图层\n（从地图选择）",
@@ -176,7 +225,25 @@ TRANSLATIONS = {
         "warn_missing_title": "缺少图层",
         "warn_missing_msg": "请选择路网图层、现有居住街坊和空置地块！",
         "done_title": "智能分析与空间优化已完成",
-        "done_msg": "MPYY 设施图层及非 MPYY 被动绿地、商业用地演示图层已添加至地图！"
+        "done_msg": "MPYY 设施图层、居住发展用地及非 MPYY 被动绿地、商业用地演示图层已添加至地图！",
+        "grp_diff": "原法定规划决策与现状实际利用图层",
+        "lbl_old_plan": "<b>原法定规划多边形图层：</b>",
+        "lbl_old_field": "<b>原规划功能 / 用地字段：</b>",
+        "lbl_actual_use": "<b>现状实际利用 / 调研图层：</b>",
+        "lbl_actual_field": "<b>现状利用 / 状态字段：</b>",
+        "chk_detect_vacant_commercial": "识别原规划为商业/设施但现状仍为空置街坊的地块",
+        "chk_detect_amenity_loss": "识别原规划为公园/设施但被实际占用的地块（第26条等效面积核查）",
+        "btn_run_diff": "🔍 启动原规划与实际利用冲突分析",
+        "diff_summary_title": "原规划决策与现状实际情况转换汇总",
+        "col_diff_plan": "原规划决策",
+        "col_diff_actual": "现状利用",
+        "col_diff_status": "冲突状态",
+        "col_diff_area": "面积 (m²)",
+        "col_diff_note": "规划评估意见",
+        "diff_done_title": "规划与现状对比分析完成",
+        "diff_done_msg": "'Plan_ve_Fiili_Kullanim_Karsilastirma' 图层已生成并渲染至地图！",
+        "warn_diff_missing_title": "缺少对比图层",
+        "warn_diff_missing_msg": "请同时选择原规划图层与现状实际利用多边形图层！",
     },
     "es": {
         "win_title": f"MPYY Accesibilidad de Instalaciones Urbanas y Optimización — Autor: {PLUGIN_AUTHOR}",
@@ -184,7 +251,8 @@ TRANSLATIONS = {
         "banner_sub": f"Alivio de Sobrecarga • Doble Dotación + Parque Intermedio • Verde Pasivo y Comercial Demo • Autor: {PLUGIN_AUTHOR}",
         "dev_label": "⚡ Desarrollador / Autor",
         "tab1": "1. Capas de Polígonos y Tabla Anexo-2",
-        "tab2": "2. Informe Detallado de Planificación y Accesibilidad",
+        "tab2": "2. Comparación de Plan Aprobado vs. Uso Real del Suelo",
+        "tab3": "3. Informe Detallado de Planificación y Accesibilidad",
         "grp1": "1. Capas de Mapa Base (Los polígonos se convierten automáticamente a centroides en segundo plano)",
         "lbl_net": "<b>Red Preparada (Prepared Network - Línea):</b>",
         "lbl_res": "<b>Manzanas Residenciales Existentes (Polígono):</b>",
@@ -196,6 +264,8 @@ TRANSLATIONS = {
         "lbl_pop_note": "*(Población ponderada por área de manzana residencial y control de sobrecarga)*",
         "lbl_split": "<b>Subdivisión Multi-Dotación y Capas Fuera de MPYY:</b>",
         "chk_split": "Permitir 2 dotaciones separadas por Parque en bloques grandes y generar Verde Pasivo y Comercial Demo",
+        "lbl_res_growth": "<b>Modo de Asignación de Crecimiento Residencial:</b>",
+        "chk_res_growth": "Evaluar bloques vacíos para idoneidad de desarrollo residencial basada en accesibilidad de red",
         "grp3": "3. Tabla de Estándares Anexo-2 (Valores Oficiales del Reglamento - Completamente Editable)",
         "col_name": "Infraestructura / Instalación\n(Estándar Anexo-2 y Color)",
         "col_layer": "Capa de Polígono Existente\n(Seleccionar del Mapa)",
@@ -217,7 +287,25 @@ TRANSLATIONS = {
         "warn_missing_title": "Capa Faltante",
         "warn_missing_msg": "¡Seleccione la Red Preparada, Bloques Residenciales y Parcelas Vacantes!",
         "done_title": "Análisis Inteligente Anexo-2 Completado",
-        "done_msg": "¡Los polígonos MPYY, Áreas Verdes Pasivas y Áreas Comerciales Demo se han agregado al mapa!"
+        "done_msg": "¡Los polígonos MPYY, Áreas de Crecimiento Residencial, Áreas Verdes Pasivas y Comerciales Demo se han agregado al mapa!",
+        "grp_diff": "Capas de Decisiones del Plan Anterior y Uso Real del Suelo",
+        "lbl_old_plan": "<b>Capa de Plan Maestro Anterior (Polígono):</b>",
+        "lbl_old_field": "<b>Columna de Función / Zonificación:</b>",
+        "lbl_actual_use": "<b>Capa de Uso Actual del Suelo (Polígono):</b>",
+        "lbl_actual_field": "<b>Columna de Uso Actual / Estado:</b>",
+        "chk_detect_vacant_commercial": "Identificar Comercio y Dotaciones Planificadas que Siguen Siendo Manzanas Vacías",
+        "chk_detect_amenity_loss": "Identificar Parques y Dotaciones Edificados (Verificación de Área Equivalente Art. 26)",
+        "btn_run_diff": "🔍 Iniciar Análisis de Discrepancias Plan vs. Uso Real",
+        "diff_summary_title": "Resumen de Transición de Decisiones del Plan vs. Realidad",
+        "col_diff_plan": "Decisión del Plan Anterior",
+        "col_diff_actual": "Uso Actual Real",
+        "col_diff_status": "Estado de Discrepancia",
+        "col_diff_area": "Área (m²)",
+        "col_diff_note": "Evaluación de Planificación",
+        "diff_done_title": "Análisis Plan vs. Realidad Completado",
+        "diff_done_msg": "¡La capa 'Plan_ve_Fiili_Kullanim_Karsilastirma' se ha generado y renderizado con éxito en el mapa!",
+        "warn_diff_missing_title": "Capas Faltantes para Comparación",
+        "warn_diff_missing_msg": "¡Por favor seleccione tanto el Plan Anterior como la Capa de Uso Actual del Suelo!",
     }
 }
 
@@ -512,6 +600,12 @@ class MPYYDonatiDialog(QDialog):
         self.chk_auto_split.setChecked(True)
         pop_grid.addWidget(self.chk_auto_split, 1, 1, 1, 2)
 
+        self.lbl_res_growth = QLabel()
+        pop_grid.addWidget(self.lbl_res_growth, 2, 0)
+        self.chk_propose_res_growth = QCheckBox()
+        self.chk_propose_res_growth.setChecked(True)
+        pop_grid.addWidget(self.chk_propose_res_growth, 2, 1, 1, 2)
+
         layout_inputs.addWidget(self.grp_pop)
 
         self.grp_table = QGroupBox()
@@ -559,6 +653,74 @@ class MPYYDonatiDialog(QDialog):
         layout_inputs.addWidget(self.grp_table, stretch=1)
         self.tabs.addTab(tab_inputs, "")
 
+        # ----------------------------------------------------
+        # TAB 2: Old Master Plan vs. Actual Land Use Discrepancy
+        # ----------------------------------------------------
+        self.tab_diff = QWidget()
+        layout_diff = QVBoxLayout(self.tab_diff)
+        layout_diff.setSpacing(10)
+
+        self.grp_diff = QGroupBox()
+        diff_grid = QGridLayout(self.grp_diff)
+        diff_grid.setSpacing(8)
+
+        self.lbl_old_plan = QLabel()
+        diff_grid.addWidget(self.lbl_old_plan, 0, 0)
+        self.cmb_old_plan = QComboBox()
+        self.cmb_old_plan.currentIndexChanged.connect(self.on_old_plan_layer_changed)
+        diff_grid.addWidget(self.cmb_old_plan, 0, 1)
+
+        self.lbl_old_field = QLabel()
+        diff_grid.addWidget(self.lbl_old_field, 0, 2)
+        self.cmb_old_field = QComboBox()
+        diff_grid.addWidget(self.cmb_old_field, 0, 3)
+
+        self.lbl_actual_use = QLabel()
+        diff_grid.addWidget(self.lbl_actual_use, 1, 0)
+        self.cmb_actual_use = QComboBox()
+        self.cmb_actual_use.currentIndexChanged.connect(self.on_actual_use_layer_changed)
+        diff_grid.addWidget(self.cmb_actual_use, 1, 1)
+
+        self.lbl_actual_field = QLabel()
+        diff_grid.addWidget(self.lbl_actual_field, 1, 2)
+        self.cmb_actual_field = QComboBox()
+        diff_grid.addWidget(self.cmb_actual_field, 1, 3)
+
+        self.chk_detect_vacant_commercial = QCheckBox()
+        self.chk_detect_vacant_commercial.setChecked(True)
+        diff_grid.addWidget(self.chk_detect_vacant_commercial, 2, 0, 1, 2)
+
+        self.chk_detect_amenity_loss = QCheckBox()
+        self.chk_detect_amenity_loss.setChecked(True)
+        diff_grid.addWidget(self.chk_detect_amenity_loss, 2, 2, 1, 2)
+
+        self.btn_run_diff = QPushButton()
+        self.btn_run_diff.setMinimumHeight(38)
+        self.btn_run_diff.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #10b981);"
+            "color: white; font-weight: bold; font-size: 13px; padding: 6px 16px; border-radius: 6px;"
+        )
+        self.btn_run_diff.clicked.connect(lambda: self.run_plan_actual_diff(show_msg=True))
+        diff_grid.addWidget(self.btn_run_diff, 3, 0, 1, 4)
+
+        layout_diff.addWidget(self.grp_diff)
+
+        self.grp_diff_tbl = QGroupBox()
+        diff_tbl_layout = QVBoxLayout(self.grp_diff_tbl)
+
+        self.tbl_diff_preview = QTableWidget()
+        self.tbl_diff_preview.setAlternatingRowColors(True)
+        self.tbl_diff_preview.setColumnCount(5)
+        diff_horiz = self.tbl_diff_preview.horizontalHeader()
+        diff_horiz.setDefaultAlignment(Qt.AlignCenter)
+        diff_horiz.setSectionResizeMode(QHeaderView.Stretch)
+        diff_horiz.setSectionResizeMode(4, QHeaderView.Interactive)
+        self.tbl_diff_preview.setColumnWidth(4, 380)
+        diff_tbl_layout.addWidget(self.tbl_diff_preview)
+
+        layout_diff.addWidget(self.grp_diff_tbl, stretch=1)
+        self.tabs.addTab(self.tab_diff, "")
+
         self.tab_report = QWidget()
         layout_report = QVBoxLayout(self.tab_report)
 
@@ -605,6 +767,7 @@ class MPYYDonatiDialog(QDialog):
 
         self.tabs.setTabText(0, t["tab1"])
         self.tabs.setTabText(1, t["tab2"])
+        self.tabs.setTabText(2, t["tab3"])
 
         self.grp_layers.setTitle(t["grp1"])
         self.lbl_net.setText(t["lbl_net"])
@@ -618,6 +781,22 @@ class MPYYDonatiDialog(QDialog):
         self.lbl_pop_note.setText(t["lbl_pop_note"])
         self.lbl_split.setText(t["lbl_split"])
         self.chk_auto_split.setText(t["chk_split"])
+        self.lbl_res_growth.setText(t["lbl_res_growth"])
+        self.chk_propose_res_growth.setText(t["chk_res_growth"])
+
+        # Tab 2 Diff Controls
+        self.grp_diff.setTitle(t["grp_diff"])
+        self.lbl_old_plan.setText(t["lbl_old_plan"])
+        self.lbl_old_field.setText(t["lbl_old_field"])
+        self.lbl_actual_use.setText(t["lbl_actual_use"])
+        self.lbl_actual_field.setText(t["lbl_actual_field"])
+        self.chk_detect_vacant_commercial.setText(t["chk_detect_vacant_commercial"])
+        self.chk_detect_amenity_loss.setText(t["chk_detect_amenity_loss"])
+        self.btn_run_diff.setText(t["btn_run_diff"])
+        self.grp_diff_tbl.setTitle(t["diff_summary_title"])
+        self.tbl_diff_preview.setHorizontalHeaderLabels([
+            t["col_diff_plan"], t["col_diff_actual"], t["col_diff_status"], t["col_diff_area"], t["col_diff_note"]
+        ])
 
         self.grp_table.setTitle(t["grp3"])
         self.tbl_params.setHorizontalHeaderLabels([
@@ -731,7 +910,14 @@ class MPYYDonatiDialog(QDialog):
         self.cmb_commercial_poly.clear()
         self.cmb_commercial_poly.addItem(t["auto_comm_layer"], None)
 
-        layers = QgsProject.instance().mapLayers().values()
+        self.cmb_old_plan.blockSignals(True)
+        self.cmb_actual_use.blockSignals(True)
+        self.cmb_old_plan.clear()
+        self.cmb_actual_use.clear()
+        self.cmb_old_plan.addItem(t["none_layer"], None)
+        self.cmb_actual_use.addItem(t["none_layer"], None)
+
+        layers = list(QgsProject.instance().mapLayers().values())
         for lyr in layers:
             if not isinstance(lyr, QgsVectorLayer):
                 continue
@@ -744,11 +930,21 @@ class MPYYDonatiDialog(QDialog):
                 self.cmb_residential_poly.addItem(lyr.name(), lyr)
                 self.cmb_vacant_polys.addItem(lyr.name(), lyr)
                 self.cmb_commercial_poly.addItem(lyr.name(), lyr)
+                self.cmb_old_plan.addItem(lyr.name(), lyr)
+                self.cmb_actual_use.addItem(lyr.name(), lyr)
 
         self._auto_select_combo(self.cmb_network, ["prepared", "yol", "network", "ag", "road"])
         self._auto_select_combo(self.cmb_residential_poly, ["konut_adalari", "mevcut_konut", "konut", "yerlesim"])
         self._auto_select_combo(self.cmb_vacant_polys, ["mevcut_bos", "bos_alan", "bos_imar", "bos_ada", "bos", "vacant"])
         self._auto_select_combo(self.cmb_commercial_poly, ["mevcut_ticari", "ticari", "ticaret", "commercial"], start_idx=1)
+
+        self._auto_select_combo(self.cmb_old_plan, ["eski_onayli_plan", "eski_plan", "onayli_plan", "meri_plan", "plan_kararlari", "plan"], start_idx=1)
+        self._auto_select_combo(self.cmb_actual_use, ["mevcut_fiili_kullanim", "fiili_kullanim", "mevcut_kullanim", "arazi_kullanimi", "saha", "actual"], start_idx=1)
+
+        self.cmb_old_plan.blockSignals(False)
+        self.cmb_actual_use.blockSignals(False)
+        self.on_old_plan_layer_changed()
+        self.on_actual_use_layer_changed()
 
         for r in range(self.tbl_params.rowCount()):
             name_item = self.tbl_params.item(r, 0)
@@ -770,6 +966,140 @@ class MPYYDonatiDialog(QDialog):
                         new_cmb.setCurrentIndex(i)
                         break
             self.tbl_params.setCellWidget(r, 1, new_cmb)
+
+    def on_old_plan_layer_changed(self):
+        lyr = self.cmb_old_plan.currentData()
+        self.cmb_old_field.clear()
+        if not lyr or not isinstance(lyr, QgsVectorLayer):
+            return
+        for f in lyr.fields():
+            self.cmb_old_field.addItem(f.name(), f.name())
+        self._auto_select_combo(self.cmb_old_field, ["plan_fonk", "fonksiyon", "kullanim", "lejant", "tur", "use", "zoning", "ad", "name"])
+
+    def on_actual_use_layer_changed(self):
+        lyr = self.cmb_actual_use.currentData()
+        self.cmb_actual_field.clear()
+        if not lyr or not isinstance(lyr, QgsVectorLayer):
+            return
+        for f in lyr.fields():
+            self.cmb_actual_field.addItem(f.name(), f.name())
+        self._auto_select_combo(self.cmb_actual_field, ["fiili_kullanim", "fiili_kul", "fiili", "kullanim", "durum", "actual", "use", "status", "ad"])
+
+    def run_plan_actual_diff(self, show_msg=True):
+        t = TRANSLATIONS[self.current_lang]
+        old_lyr = self.cmb_old_plan.currentData()
+        act_lyr = self.cmb_actual_use.currentData()
+        old_field = self.cmb_old_field.currentText()
+        act_field = self.cmb_actual_field.currentText()
+
+        if not old_lyr or not act_lyr:
+            if show_msg:
+                QMessageBox.warning(self, t["warn_diff_missing_title"], t["warn_diff_missing_msg"])
+            return None
+
+        diff_feats, summary, matrix = PlanActualDiffEngine.run_comparison(
+            old_lyr, old_field, act_lyr, act_field,
+            target_crs=old_lyr.crs(), min_area_m2=1.0
+        )
+
+        self.last_diff_summary = summary
+        self.last_diff_matrix = matrix
+
+        # Populate tbl_diff_preview in Tab 2
+        self.tbl_diff_preview.setRowCount(0)
+        sorted_feats = sorted(diff_feats, key=lambda x: x["alan_m2"], reverse=True)
+        for df in sorted_feats[:120]:
+            r = self.tbl_diff_preview.rowCount()
+            self.tbl_diff_preview.insertRow(r)
+            self.tbl_diff_preview.setItem(r, 0, QTableWidgetItem(str(df["eski_plan"])))
+            self.tbl_diff_preview.setItem(r, 1, QTableWidgetItem(str(df["mevcut_fiili"])))
+            status_item = QTableWidgetItem(df["durum"])
+            if df["kod"] == "UYUMLU":
+                status_item.setForeground(QColor("#059669"))
+            elif df["kod"] == "BOS_ADA":
+                status_item.setForeground(QColor("#d97706"))
+            elif df["kod"] == "DONATI_KAYBI":
+                status_item.setForeground(QColor("#dc2626"))
+            elif df["kod"] == "ACIK_ALAN":
+                status_item.setForeground(QColor("#0d9488"))
+            else:
+                status_item.setForeground(QColor("#2563eb"))
+            status_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            self.tbl_diff_preview.setItem(r, 2, status_item)
+            area_item = QTableWidgetItem(f"{df['alan_m2']:,.1f}")
+            area_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.tbl_diff_preview.setItem(r, 3, area_item)
+            self.tbl_diff_preview.setItem(r, 4, QTableWidgetItem(df["yorum"]))
+
+        # Build QGIS Vector Memory Layer
+        crs_auth = old_lyr.crs().authid()
+        out_lyr = QgsVectorLayer(f"Polygon?crs={crs_auth}", "Plan_Fiili_Kullanim_Uyusmazlik_Analizi", "memory")
+        pr = out_lyr.dataProvider()
+        pr.addAttributes([
+            QgsField("eski_plan", _QVAR_STRING),
+            QgsField("mevcut_fiili", _QVAR_STRING),
+            QgsField("durum", _QVAR_STRING),
+            QgsField("kod", _QVAR_STRING),
+            QgsField("alan_m2", _QVAR_DOUBLE),
+            QgsField("planlama_yorumu", _QVAR_STRING),
+            QgsField("yazar", _QVAR_STRING),
+        ])
+        out_lyr.updateFields()
+
+        qfeats = []
+        for df in diff_feats:
+            f = QgsFeature(out_lyr.fields())
+            f.setGeometry(df["geom"])
+            f["eski_plan"] = df["eski_plan"]
+            f["mevcut_fiili"] = df["mevcut_fiili"]
+            f["durum"] = df["durum"]
+            f["kod"] = df["kod"]
+            f["alan_m2"] = df["alan_m2"]
+            f["planlama_yorumu"] = df["yorum"]
+            f["yazar"] = PLUGIN_AUTHOR
+            qfeats.append(f)
+        pr.addFeatures(qfeats)
+        out_lyr.updateExtents()
+
+        # Categorized Symbology
+        cats = [
+            ("UYUMLU", "Uyumlu / Gerçekleşmiş", "#10b981"),
+            ("BOS_ADA", "Gerçekleşmemiş (Boş Ada)", "#f59e0b"),
+            ("ACIK_ALAN", "Gerçekleşmemiş (Park / Açık Alan)", "#059669"),
+            ("DONATI_KAYBI", "Aykırı Dönüşüm / Donatı Kaybı", "#ef4444"),
+            ("FONKSIYON_DEGISIMI", "Fonksiyon Değişimi", "#3b82f6"),
+        ]
+        renderer_cats = []
+        for val, label, hex_col in cats:
+            sym = QgsFillSymbol.createSimple({
+                "color": hex_col,
+                "color_border": "#0f172a",
+                "width_border": "0.6",
+                "style": "solid",
+            })
+            sym.setOpacity(0.72)
+            renderer_cats.append(QgsRendererCategory(val, sym, label))
+        renderer = QgsCategorizedSymbolRenderer("kod", renderer_cats)
+        out_lyr.setRenderer(renderer)
+        out_lyr.triggerRepaint()
+
+        # Add to Group in Layer Tree
+        root = QgsProject.instance().layerTreeRoot()
+        grp_name = "Plan_ve_Fiili_Kullanim_Karsilastirma"
+        grp = root.findGroup(grp_name)
+        if grp is None:
+            grp = root.addGroup(grp_name)
+        existing = QgsProject.instance().mapLayersByName(out_lyr.name())
+        for el in existing:
+            QgsProject.instance().removeMapLayer(el.id())
+        QgsProject.instance().addMapLayer(out_lyr, False)
+        grp.addLayer(out_lyr)
+
+        if show_msg:
+            QMessageBox.information(self, t["diff_done_title"], t["diff_done_msg"])
+            self.tabs.setCurrentIndex(1)
+
+        return out_lyr
 
     def _auto_select_combo(self, combo, keywords, start_idx=0):
         for kw in keywords:
@@ -838,7 +1168,7 @@ class MPYYDonatiDialog(QDialog):
                     return lyr
         return None
 
-    def run_full_analysis(self):
+    def run_full_analysis(self, show_msg=True):
         t = TRANSLATIONS[self.current_lang]
         net_lyr = self.cmb_network.currentData()
         res_poly_lyr = self.cmb_residential_poly.currentData()
@@ -1723,6 +2053,76 @@ class MPYYDonatiDialog(QDialog):
             vac_pts_pr.addFeatures(vac_pt_features)
             vac_pts_lyr.updateExtents()
 
+            # 8. Evaluate Candidate Residential Growth Blocks via Road Network Walkability & Capacity
+            res_growth_results = []
+            res_growth_lyr = None
+            if self.chk_propose_res_growth.isChecked():
+                res_growth_results = ResidentialGrowthNetworkEvaluator.evaluate_candidate_blocks(
+                    candidate_features=list(vac_poly_lyr.getFeatures()),
+                    graph=graph,
+                    fac_by_type=fac_by_type,
+                    specs=specs,
+                    comm_pts=comm_pts,
+                    net_dist_maps=net_dist_maps,
+                    net_owner_maps=net_owner_maps,
+                    overloaded_facilities=overloaded_facilities,
+                    target_crs=work_crs,
+                    gross_density_pop_per_ha=180.0,
+                )
+                if res_growth_results:
+                    res_growth_lyr = QgsVectorLayer(f"Polygon?crs={crs_auth}", "Onerilen_Gelisme_Konut_Alanlari", "memory")
+                    rg_pr = res_growth_lyr.dataProvider()
+                    rg_pr.addAttributes([
+                        QgsField("kaynak_ada_id", _QVAR_INT),
+                        QgsField("alan_m2", _QVAR_DOUBLE),
+                        QgsField("ongorulen_nufus", _QVAR_INT),
+                        QgsField("konut_skoru", _QVAR_DOUBLE),
+                        QgsField("erisim_sinifi", _QVAR_STRING),
+                        QgsField("kod", _QVAR_STRING),
+                        QgsField("ilkokul_yol_m", _QVAR_DOUBLE),
+                        QgsField("ortaokul_yol_m", _QVAR_DOUBLE),
+                        QgsField("asm_yol_m", _QVAR_DOUBLE),
+                        QgsField("park_yol_m", _QVAR_DOUBLE),
+                        QgsField("ticari_yol_m", _QVAR_DOUBLE),
+                        QgsField("kapasite_durumu", _QVAR_STRING),
+                        QgsField("planlama_gerekcesi", _QVAR_STRING),
+                        QgsField("yazar", _QVAR_STRING),
+                    ])
+                    res_growth_lyr.updateFields()
+
+                    rg_feats = []
+                    for rg in res_growth_results:
+                        rf = QgsFeature(res_growth_lyr.fields())
+                        rf.setGeometry(rg["geom"])
+                        rf["kaynak_ada_id"] = rg["ada_id"]
+                        rf["alan_m2"] = rg["alan_m2"]
+                        rf["ongorulen_nufus"] = rg["ongorulen_nufus"]
+                        rf["konut_skoru"] = rg["konut_skoru"]
+                        rf["erisim_sinifi"] = rg["erisim_sinifi"]
+                        rf["kod"] = rg["kod"]
+                        rf["ilkokul_yol_m"] = rg["ilkokul_yol_m"]
+                        rf["ortaokul_yol_m"] = rg["ortaokul_yol_m"]
+                        rf["asm_yol_m"] = rg["asm_yol_m"]
+                        rf["park_yol_m"] = rg["park_yol_m"]
+                        rf["ticari_yol_m"] = rg["ticari_yol_m"]
+                        rf["kapasite_durumu"] = rg["kapasite_durumu"]
+                        rf["planlama_gerekcesi"] = rg["planlama_gerekcesi"]
+                        rf["yazar"] = PLUGIN_AUTHOR
+                        rg_feats.append(rf)
+                    rg_pr.addFeatures(rg_feats)
+                    res_growth_lyr.updateExtents()
+                    res_growth_lyr.setAbstract(f"Residential Growth Suitability evaluated via Pedestrian Road Network — Author: {PLUGIN_AUTHOR}")
+                    self.apply_residential_growth_symbology(res_growth_lyr)
+
+            # 9. Auto-run Plan vs Actual Use Discrepancy Analysis if layers are selected
+            old_lyr = self.cmb_old_plan.currentData()
+            act_lyr = self.cmb_actual_use.currentData()
+            if old_lyr and act_lyr:
+                try:
+                    self.run_plan_actual_diff(show_msg=False)
+                except Exception:
+                    pass
+
             for lyr_obj in (alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr):
                 lyr_obj.setAbstract(f"Generated by MPYY Urban Facility Optimization Plugin — Author: {PLUGIN_AUTHOR}")
 
@@ -1731,19 +2131,22 @@ class MPYYDonatiDialog(QDialog):
 
             self._add_layers_to_grouped_tree(
                 alloc_lyr, passive_lyr, comm_out_lyr,
-                res_out_lyr, fac_pts_lyr, vac_pts_lyr
+                res_out_lyr, fac_pts_lyr, vac_pts_lyr,
+                res_growth_lyr=res_growth_lyr
             )
 
             html_report = self.build_html_report(
                 total_pop, specs, fac_by_type, existing_cap_by_type,
                 unserved_pop_by_cat, overflow_pop_by_cat, bird_ok_road_fail_count,
-                allocated_summary, non_mpyy_summary, parcel_narrative_list
+                allocated_summary, non_mpyy_summary, parcel_narrative_list,
+                res_growth_results=res_growth_results,
             )
             self.txt_report.setHtml(html_report)
-            self.tabs.setCurrentIndex(1)
+            self.tabs.setCurrentIndex(2)
             self.progress.setValue(100)
 
-            QMessageBox.information(self, t["done_title"], t["done_msg"])
+            if show_msg:
+                QMessageBox.information(self, t["done_title"], t["done_msg"])
         finally:
             self.btn_run.setEnabled(True)
 
@@ -1771,7 +2174,7 @@ class MPYYDonatiDialog(QDialog):
                         node_entry[4] = True
 
     def _add_layers_to_grouped_tree(
-        self, alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr
+        self, alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr, res_growth_lyr=None
     ):
         proj = QgsProject.instance()
         root = proj.layerTreeRoot()
@@ -1791,6 +2194,10 @@ class MPYYDonatiDialog(QDialog):
         proj.addMapLayer(alloc_lyr, False)
         grp_mpyy.addLayer(alloc_lyr)
 
+        if res_growth_lyr is not None and res_growth_lyr.featureCount() > 0:
+            proj.addMapLayer(res_growth_lyr, False)
+            grp_mpyy.addLayer(res_growth_lyr)
+
         if self.chk_show_centroids.isChecked():
             for c_lyr in (res_out_lyr, fac_pts_lyr, vac_pts_lyr):
                 proj.addMapLayer(c_lyr, False)
@@ -1803,6 +2210,27 @@ class MPYYDonatiDialog(QDialog):
         if comm_out_lyr.featureCount() > 0:
             proj.addMapLayer(comm_out_lyr, False)
             grp_non_mpyy.addLayer(comm_out_lyr)
+
+    def apply_residential_growth_symbology(self, layer):
+        cats = [
+            ("ONCELIKLI_KONUT", "Öncelikli Gelişme Konut Alanı (15-Dk Şehir Standardı)", "#eab308"),
+            ("UYGUN_KONUT", "Uygun Gelişme Konut Alanı (İyi Donatı Erişimi)", "#f97316"),
+            ("SARTLI_KONUT", "Şartlı Gelişme Konut Alanı (Kısmi Donatı Eksikliği)", "#84cc16"),
+            ("UYGUN_DEGIL", "Gelişmeye Uygun Değil (Donatı Altyapısı Yetersiz)", "#94a3b8"),
+        ]
+        renderer_cats = []
+        for val, label, hex_col in cats:
+            sym = QgsFillSymbol.createSimple({
+                "color": hex_col,
+                "color_border": "#0f172a",
+                "width_border": "0.65",
+                "style": "solid",
+            })
+            sym.setOpacity(0.78)
+            renderer_cats.append(QgsRendererCategory(val, sym, label))
+        renderer = QgsCategorizedSymbolRenderer("kod", renderer_cats)
+        layer.setRenderer(renderer)
+        layer.triggerRepaint()
 
     def apply_polygon_symbology(self, layer, specs):
         categories = []
@@ -1851,29 +2279,11 @@ class MPYYDonatiDialog(QDialog):
         ))
         passive_lyr.triggerRepaint()
 
-        # Commercial Demo: Distinctive Coral/Crimson Commercial style (#e11d48)
-        com_sym = QgsFillSymbol.createSimple({
-            'color': '#e11d48',
-            'outline_color': '#881337',
-            'outline_width': '0.70'
-        })
-        com_sym.setOpacity(0.88)
-        comm_out_lyr.setRenderer(QgsCategorizedSymbolRenderer(
-            "kullanim_turu",
-            [
-                QgsRendererCategory(
-                    "Önerilen Ticari Alan (MPYY Dışı Erişim Demo)",
-                    com_sym,
-                    "Önerilen Ticari Alan (MPYY Dışı Erişim Demo)"
-                )
-            ]
-        ))
-        comm_out_lyr.triggerRepaint()
-
     def build_html_report(
         self, total_pop, specs, fac_by_type, existing_cap_by_type,
         unserved_pop_by_cat, overflow_pop_by_cat, bird_ok_road_fail_count,
-        allocated_summary, non_mpyy_summary, parcel_narrative_list
+        allocated_summary, non_mpyy_summary, parcel_narrative_list,
+        res_growth_results=None,
     ):
         rows_html = ""
         for cat, sp in specs.items():
@@ -1925,6 +2335,115 @@ class MPYYDonatiDialog(QDialog):
         </table>
         """
 
+        diff_html = ""
+        if hasattr(self, "last_diff_summary") and self.last_diff_summary:
+            s = self.last_diff_summary
+            tot_a = max(s.get("toplam_alan_m2", 1), 1)
+            diff_html = f"""
+            <h3 style='margin-top:22px; color:#1e3a8a; border-bottom:2px solid #1e3a8a; padding-bottom:5px;'>
+                Eski / Onaylı Plan Kararları ile Fiili Arazi Kullanımı Uyuşmazlık Raporu (MPYY Md. 26 Denetimi)
+            </h3>
+            <p style='font-size:12px; color:#334155;'>
+                Önceki onaylı imar planında ayrılan arazi kullanım kararları ile sahadaki fiili durum mekânsal çakıştırma
+                (spatial intersection) ile taranmıştır. Planda Ticaret/Donatı olup sahada gerçekleşmemiş ('Boş Ada') veya
+                kamusal donatı alanının yapılaşmaya kurban edildiği ('DONATI_KAYBI') durumlar tespit edilmiştir.
+            </p>
+            <table border='1' cellspacing='0' cellpadding='6' width='100%' style='border-collapse:collapse; font-size:12px;'>
+                <tr style='background-color:#1e293b; color:white;'>
+                    <th>Uyuşmazlık / Gerçekleşme Durumu</th>
+                    <th>Parsel Sayısı</th>
+                    <th>Toplam Alan (m²)</th>
+                    <th>Oran (%)</th>
+                    <th>İmar Mevzuatı & MPYY Planlama Yorumu</th>
+                </tr>
+                <tr>
+                    <td><span style='color:#059669; font-weight:bold;'>✔ Uyumlu / Gerçekleşmiş</span></td>
+                    <td align='center'><b>{s.get('uyumlu_adet', 0)}</b></td>
+                    <td align='center'>{s.get('uyumlu_m2', 0):,.1f} m²</td>
+                    <td align='center'>%{s.get('uyumlu_m2', 0) / tot_a * 100:.1f}</td>
+                    <td>Plan kararı sahada aynen hayata geçmiştir.</td>
+                </tr>
+                <tr style='background-color:#fef3c7;'>
+                    <td><span style='color:#d97706; font-weight:bold;'>⏳ Gerçekleşmemiş (Boş Ada / Arsa)</span></td>
+                    <td align='center'><b>{s.get('bos_ada_adet', 0)}</b></td>
+                    <td align='center'>{s.get('bos_ada_m2', 0):,.1f} m²</td>
+                    <td align='center'>%{s.get('bos_ada_m2', 0) / tot_a * 100:.1f}</td>
+                    <td>Planda Ticaret veya Donatı öngörülmüş ancak yapılaşmamış; öncelikli rezerv müdahale alanıdır.</td>
+                </tr>
+                <tr>
+                    <td><span style='color:#0d9488; font-weight:bold;'>🌳 Gerçekleşmemiş (Açık Alan / Park)</span></td>
+                    <td align='center'><b>{s.get('acik_alan_adet', 0)}</b></td>
+                    <td align='center'>{s.get('acik_alan_m2', 0):,.1f} m²</td>
+                    <td align='center'>%{s.get('acik_alan_m2', 0) / tot_a * 100:.1f}</td>
+                    <td>Planda yapılaşma kararı varken fiiliyatta yeşil alan/park olarak değerlendirilmektedir.</td>
+                </tr>
+                <tr style='background-color:#fee2e2;'>
+                    <td><span style='color:#dc2626; font-weight:bold;'>✖ Aykırı Dönüşüm / Donatı Kaybı</span></td>
+                    <td align='center'><b>{s.get('donati_kaybi_adet', 0)}</b></td>
+                    <td align='center'>{s.get('donati_kaybi_m2', 0):,.1f} m²</td>
+                    <td align='center'>%{s.get('donati_kaybi_m2', 0) / tot_a * 100:.1f}</td>
+                    <td><b>DİKKAT:</b> Plandaki kamusal donatı sahadaki yapılaşmayla yok olmuştur; MPYY Md. 26 gereği eşdeğer alan tahsisi zorunludur!</td>
+                </tr>
+                <tr>
+                    <td><span style='color:#2563eb; font-weight:bold;'>🔄 Fonksiyon Değişimi</span></td>
+                    <td align='center'><b>{s.get('fonksiyon_degisimi_adet', 0)}</b></td>
+                    <td align='center'>{s.get('fonksiyon_degisimi_m2', 0):,.1f} m²</td>
+                    <td align='center'>%{s.get('fonksiyon_degisimi_m2', 0) / tot_a * 100:.1f}</td>
+                    <td>Farklı bir kentsel fonksiyon gelişmiştir.</td>
+                </tr>
+            </table>
+            """
+
+        res_growth_html = ""
+        if res_growth_results:
+            rg_rows = ""
+            for rg in res_growth_results:
+                badge_bg = rg["renk"]
+                sch_str = f"{int(rg['ilkokul_yol_m'])} m" if rg['ilkokul_yol_m'] > 0 else "Uzak / Yok"
+                asm_str = f"{int(rg['asm_yol_m'])} m" if rg['asm_yol_m'] > 0 else "Uzak / Yok"
+                park_str = f"{int(rg['park_yol_m'])} m" if rg['park_yol_m'] > 0 else "Uzak / Yok"
+                comm_str = f"{int(rg['ticari_yol_m'])} m" if rg['ticari_yol_m'] > 0 else "Uzak / Yok"
+                rg_rows += f"""
+                <tr>
+                    <td align='center'><b>Ada #{rg['ada_id']}</b></td>
+                    <td align='center'>{rg['alan_m2']:,.1f} m²</td>
+                    <td align='center'><b>~{rg['ongorulen_nufus']:,} kişi</b></td>
+                    <td align='center'>{sch_str}</td>
+                    <td align='center'>{asm_str}</td>
+                    <td align='center'>{park_str}</td>
+                    <td align='center'>{comm_str}</td>
+                    <td align='center'><span style='display:inline-block;padding:2px 8px;border-radius:3px;background:{badge_bg};color:#ffffff;font-weight:bold;'>{rg['konut_skoru']}/100</span></td>
+                    <td><b>{rg['erisim_sinifi']}</b><br><small style='color:#475569;'>{rg['planlama_gerekcesi']}</small></td>
+                </tr>
+                """
+
+            res_growth_html = f"""
+            <h3 style='margin-top:22px; color:#b45309; border-bottom:2px solid #b45309; padding-bottom:5px;'>
+                Donatı Erişilebilirlik Tabanlı Gelişme Konut Alanı Yer Seçimi Raporu (15-Dakikalık Şehir Standardı)
+            </h3>
+            <p style='font-size:12px; color:#334155;'>
+                <b>Temel Planlama İlkesi:</b> Gelişme Konut Alanları dışarıya hizmet yarıçapı üreten bir donatı değil,
+                temel kamusal donatılardan (İlkokul 500m, Sağlık Ocağı 500m, Park 500m, Ortaokul 1000m, Ticaret 800m)
+                yaya yol ağı üzerinden hizmet <b>ALAN</b> talep birimleridir. Bu nedenle konut adası yer seçimi tahmini değil;
+                yol ağı yürüme mesafeleri ve mevcut tesislerin kapasite aşım riski ($C_{{safe}}$) denetlenerek
+                çok kriterli yer seçimi skoru ($S_{{res}} \\in [0, 100]$) ile bilimsel olarak gerekçelendirilmiştir.
+            </p>
+            <table border='1' cellspacing='0' cellpadding='6' width='100%' style='border-collapse:collapse; font-size:12px;'>
+                <tr style='background-color:#78350f; color:white;'>
+                    <th>İmar Adası</th>
+                    <th>Alan (m²)</th>
+                    <th>Öngörülen Nüfus (180 k/ha)</th>
+                    <th>İlkokul (Yol m)</th>
+                    <th>Sağlık (ASM Yol m)</th>
+                    <th>Park (Yol m)</th>
+                    <th>Ticaret (Yol m)</th>
+                    <th>Erişim Skoru</th>
+                    <th>Planlama Kararı ve Gerekçesi</th>
+                </tr>
+                {rg_rows}
+            </table>
+            """
+
         narratives_html = "".join([f"<li style='margin-bottom:8px;'>{n}</li>" for n in parcel_narrative_list])
 
         return f"""
@@ -1958,6 +2477,8 @@ class MPYYDonatiDialog(QDialog):
             </table>
             <h3 style='margin-top:16px; color:#14532d;'>MPYY Dışı Tamamlayıcı Planlama Katmanları (Pasif Yeşil & Ticari Demo)</h3>
             {non_mpyy_html}
+            {res_growth_html}
+            {diff_html}
             <h3 style='margin-top:18px;'>İmar Adaları Çoklu İfraz, Kapasite Rahatlatma ve Atama Açıklamaları</h3>
             <ul style='font-size:13px; line-height:1.5;'>
                 {narratives_html}
@@ -2057,9 +2578,48 @@ class MPYYDonatiDialog(QDialog):
         vp_pr.addFeatures(poly_feats)
         vac_poly_lyr.updateExtents()
 
+        # Demo Layers for Tab 2: Eski Onaylı Plan vs Fiili Arazi Kullanımı
+        old_plan_lyr = QgsVectorLayer(f"Polygon?crs={crs}", "eski_onayli_plan", "memory")
+        opr = old_plan_lyr.dataProvider()
+        opr.addAttributes([QgsField("plan_fonksiyonu", _QVAR_STRING)])
+        old_plan_lyr.updateFields()
+
+        actual_use_lyr = QgsVectorLayer(f"Polygon?crs={crs}", "mevcut_fiili_kullanim", "memory")
+        apr = actual_use_lyr.dataProvider()
+        apr.addAttributes([QgsField("fiili_kullanim", _QVAR_STRING)])
+        actual_use_lyr.updateFields()
+
+        demo_diff_parcels = [
+            (base_x + 1150, base_y + 100, 100, 90, "Ticaret Alanı", "Boş Ada / Arsa"),
+            (base_x + 1150, base_y + 250, 90, 85, "Ticaret Alanı", "Park ve Yeşil Alan"),
+            (base_x + 1150, base_y + 400, 110, 90, "İlkokul Alanı", "Konut Alanı"),
+            (base_x + 1150, base_y + 550, 95, 80, "Konut Alanı", "Konut Alanı"),
+            (base_x + 1150, base_y + 700, 80, 80, "Park Alanı", "Park Alanı"),
+        ]
+        old_feats = []
+        act_feats = []
+        for bx, by, bw, bh, p_fn, a_fn in demo_diff_parcels:
+            g = make_rect_poly(bx, by, bw, bh)
+            f_old = QgsFeature(old_plan_lyr.fields())
+            f_old.setGeometry(g)
+            f_old["plan_fonksiyonu"] = p_fn
+            old_feats.append(f_old)
+
+            f_act = QgsFeature(actual_use_lyr.fields())
+            f_act.setGeometry(g)
+            f_act["fiili_kullanim"] = a_fn
+            act_feats.append(f_act)
+
+        opr.addFeatures(old_feats)
+        old_plan_lyr.updateExtents()
+        apr.addFeatures(act_feats)
+        actual_use_lyr.updateExtents()
+
         QgsProject.instance().addMapLayer(net_lyr)
         QgsProject.instance().addMapLayer(vac_poly_lyr)
         QgsProject.instance().addMapLayer(res_lyr)
+        QgsProject.instance().addMapLayer(old_plan_lyr)
+        QgsProject.instance().addMapLayer(actual_use_lyr)
 
         self.populate_layers()
 
