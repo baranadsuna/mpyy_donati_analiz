@@ -26,6 +26,7 @@ from .mpyy_engine import (
     subdivide_block_multi_use,
     PlanActualDiffEngine,
     ResidentialGrowthNetworkEvaluator,
+    AdaptiveAmenityWeightingEngine,
 )
 
 _QVAR_INT = getattr(QVariant, "Int", 2)
@@ -68,6 +69,8 @@ TRANSLATIONS = {
         "chk_split": "Büyük adalarda İlkokul + Park Tamponu + ASM kurgula; MPYY dışı grupta Pasif Yeşil Alanlar ve Ticari Alan (Demo) öner",
         "lbl_res_growth": "<b>Gelişme Konut Alanı Öneri Modu:</b>",
         "chk_res_growth": "Boş imar adalarında yol ağı donatı erişilebilirliğine göre Gelişme Konut Alanı öner ve puanla",
+        "lbl_adaptive_stochastic": "<b>İhtiyaç Ağırlıkları & Stokastik Dengeleme (Hoca Modeli):</b>",
+        "chk_adaptive_stochastic": "Kişi başı m² donatı açığını (ağırlık) hesapla, stokastik sırayla dengele ve boş parsellerde geri-beslemeli konut/donatı kararı ver",
         "grp3": "3. EK-2 Sosyal ve Teknik Altyapı Alanları Standartları Tablosu (Tamamen Düzenlenebilir)",
         "col_name": "Altyapı Alanı / Donatı\n(EK-2 Standart & Renk)",
         "col_layer": "Mevcut Poligon Katmanı\n(Haritadan Seç)",
@@ -136,6 +139,8 @@ TRANSLATIONS = {
         "chk_split": "Allow 2 built facilities separated by a Park buffer on large blocks; generate Non-MPYY Passive Green & Commercial Demo layers",
         "lbl_res_growth": "<b>Residential Growth Allocation Mode:</b>",
         "chk_res_growth": "Evaluate vacant blocks for network-based Residential Development Area suitability (15-min city)",
+        "lbl_adaptive_stochastic": "<b>Adaptive Deficit Weighting & Stochastic Equilibrium (Academic Model):</b>",
+        "chk_adaptive_stochastic": "Compute per-block m² deficit weights, evaluate residential blocks stochastically, and decide vacant allocation with capacity feedback",
         "grp3": "3. Annex-2 Social & Technical Infrastructure Standards Table (Fully Editable)",
         "col_name": "Infrastructure / Facility\n(Annex-2 Std & Color)",
         "col_layer": "Existing Polygon Layer\n(Select from Map)",
@@ -204,6 +209,8 @@ TRANSLATIONS = {
         "chk_split": "支持大型街坊配置“小学+公园缓冲+社区医院”，并生成非MPYY被动绿地与商业用地",
         "lbl_res_growth": "<b>居住发展用地建议模式：</b>",
         "chk_res_growth": "基于路网设施可达性与容量安全评估空置地块并建议居住发展用地（15分钟城市）",
+        "lbl_adaptive_stochastic": "<b>自适应赤字加权与随机均衡模型（学术模型）：</b>",
+        "chk_adaptive_stochastic": "逐居住街坊计算人均设施赤字权重，随机遍历均衡，并在空置地块进行容量反馈决策",
         "grp3": "3. 附表2社会与技术基础设施标准表（法规官方数值 - 可完全编辑）",
         "col_name": "基础设施 / 设施\n（附表2标准与颜色）",
         "col_layer": "现有多边形图层\n（从地图选择）",
@@ -266,6 +273,8 @@ TRANSLATIONS = {
         "chk_split": "Permitir 2 dotaciones separadas por Parque en bloques grandes y generar Verde Pasivo y Comercial Demo",
         "lbl_res_growth": "<b>Modo de Asignación de Crecimiento Residencial:</b>",
         "chk_res_growth": "Evaluar bloques vacíos para idoneidad de desarrollo residencial basada en accesibilidad de red",
+        "lbl_adaptive_stochastic": "<b>Ponderación Adaptativa de Déficit y Equilibrio Estocástico (Modelo Académico):</b>",
+        "chk_adaptive_stochastic": "Calcular pesos de déficit por manzana, evaluar estocásticamente y asignar parcelas vacías con retroalimentación de capacidad",
         "grp3": "3. Tabla de Estándares Anexo-2 (Valores Oficiales del Reglamento - Completamente Editable)",
         "col_name": "Infraestructura / Instalación\n(Estándar Anexo-2 y Color)",
         "col_layer": "Capa de Polígono Existente\n(Seleccionar del Mapa)",
@@ -606,6 +615,12 @@ class MPYYDonatiDialog(QDialog):
         self.chk_propose_res_growth.setChecked(True)
         pop_grid.addWidget(self.chk_propose_res_growth, 2, 1, 1, 2)
 
+        self.lbl_adaptive_stochastic = QLabel()
+        pop_grid.addWidget(self.lbl_adaptive_stochastic, 3, 0)
+        self.chk_adaptive_stochastic = QCheckBox()
+        self.chk_adaptive_stochastic.setChecked(True)
+        pop_grid.addWidget(self.chk_adaptive_stochastic, 3, 1, 1, 2)
+
         layout_inputs.addWidget(self.grp_pop)
 
         self.grp_table = QGroupBox()
@@ -783,6 +798,8 @@ class MPYYDonatiDialog(QDialog):
         self.chk_auto_split.setText(t["chk_split"])
         self.lbl_res_growth.setText(t["lbl_res_growth"])
         self.chk_propose_res_growth.setText(t["chk_res_growth"])
+        self.lbl_adaptive_stochastic.setText(t["lbl_adaptive_stochastic"])
+        self.chk_adaptive_stochastic.setText(t["chk_adaptive_stochastic"])
 
         # Tab 2 Diff Controls
         self.grp_diff.setTitle(t["grp_diff"])
@@ -1376,6 +1393,20 @@ class MPYYDonatiDialog(QDialog):
             fac_pts_lyr.updateExtents()
 
             # 6. Pass 2: Evaluate Every Residential Block (Distance Reachability + Capacity Overflow)
+            stochastic_profiles = {}
+            stochastic_ordered_list = []
+            if self.chk_adaptive_stochastic.isChecked():
+                stochastic_profiles, stochastic_ordered_list = AdaptiveAmenityWeightingEngine.compute_block_amenity_profiles(
+                    res_feats=res_feats,
+                    graph=graph,
+                    fac_by_type=fac_by_type,
+                    specs=specs,
+                    total_pop=total_pop,
+                    net_dist_maps=net_dist_maps,
+                    randomize_order=True,
+                    seed=42,
+                )
+
             res_out_lyr = QgsVectorLayer(f"Point?crs={crs_auth}", "MPYY_Konut_Agirlik_Merkezleri_Erisim", "memory")
             res_pr = res_out_lyr.dataProvider()
             res_fields = QgsFields()
@@ -1383,6 +1414,17 @@ class MPYYDonatiDialog(QDialog):
             res_fields.append(QgsField("ada_alan_m2", _QVAR_DOUBLE))
             res_fields.append(QgsField("tahmini_nufus", _QVAR_DOUBLE))
             res_fields.append(QgsField("ticari_yol_m", _QVAR_DOUBLE))
+
+            if self.chk_adaptive_stochastic.isChecked():
+                res_fields.append(QgsField("stokastik_sira", _QVAR_INT))
+                res_fields.append(QgsField("oncelikli_ihtiyac", _QVAR_STRING))
+                res_fields.append(QgsField("donati_yeterlilik", _QVAR_DOUBLE))
+                for cat in specs.keys():
+                    if specs[cat]["key_id"] == "konut":
+                        continue
+                    short_c = cat[:10].replace(" ", "_")
+                    res_fields.append(QgsField(f"{short_c}_m2_kisi", _QVAR_DOUBLE))
+                    res_fields.append(QgsField(f"{short_c}_ihtiyac_agirlik", _QVAR_DOUBLE))
 
             for cat in specs.keys():
                 if specs[cat]["key_id"] == "konut":
@@ -1415,6 +1457,18 @@ class MPYYDonatiDialog(QDialog):
 
                 d_comm_r = (comm_dist_map[r_nid] + r_snap) if (r_nid is not None and r_nid in comm_dist_map) else -1.0
                 new_f["ticari_yol_m"] = round(d_comm_r, 1)
+
+                if self.chk_adaptive_stochastic.isChecked() and r_id in stochastic_profiles:
+                    sprof = stochastic_profiles[r_id]
+                    new_f["stokastik_sira"] = sprof["stokastik_sira"]
+                    new_f["oncelikli_ihtiyac"] = f"{sprof['en_oncelikli_ihtiyac']} (%{int(sprof['oncelikli_agirlik']*100)})"
+                    new_f["donati_yeterlilik"] = sprof["donati_yeterlilik_yuzdesi"]
+                    for cat in specs.keys():
+                        if specs[cat]["key_id"] == "konut":
+                            continue
+                        short_c = cat[:10].replace(" ", "_")
+                        new_f[f"{short_c}_m2_kisi"] = sprof["mevcut_m2_kisi"].get(cat, 0.0)
+                        new_f[f"{short_c}_ihtiyac_agirlik"] = sprof["ihtiyac_agirligi"].get(cat, 0.0)
 
                 eksikler = []
                 rapor_satirlari = []
@@ -2114,6 +2168,63 @@ class MPYYDonatiDialog(QDialog):
                     res_growth_lyr.setAbstract(f"Residential Growth Suitability evaluated via Pedestrian Road Network — Author: {PLUGIN_AUTHOR}")
                     self.apply_residential_growth_symbology(res_growth_lyr)
 
+            # 8b. Adaptive Deficit Weighting & Stochastic Allocation with Feedback Loop
+            stochastic_allocations = []
+            stoch_alloc_lyr = None
+            if self.chk_adaptive_stochastic.isChecked() and stochastic_profiles:
+                stochastic_allocations = AdaptiveAmenityWeightingEngine.evaluate_and_allocate_vacant_blocks(
+                    vac_feats=list(vac_poly_lyr.getFeatures()),
+                    block_profiles=stochastic_profiles,
+                    graph=graph,
+                    specs=specs,
+                    fac_by_type=fac_by_type,
+                    gross_density_pop_per_ha=180.0,
+                    satisfaction_threshold=0.35,
+                    randomize_vacant=True,
+                    seed=42,
+                )
+                if stochastic_allocations:
+                    stoch_alloc_lyr = QgsVectorLayer(f"Polygon?crs={crs_auth}", "MPYY_Stokastik_Dengeleme_Konut_ve_Donati", "memory")
+                    stoch_pr = stoch_alloc_lyr.dataProvider()
+                    stoch_pr.addAttributes([
+                        QgsField("kaynak_ada_id", _QVAR_INT),
+                        QgsField("alan_m2", _QVAR_DOUBLE),
+                        QgsField("stokastik_sira", _QVAR_INT),
+                        QgsField("karar_turu", _QVAR_STRING),
+                        QgsField("atanan_kullanim", _QVAR_STRING),
+                        QgsField("kod", _QVAR_STRING),
+                        QgsField("ongorulen_nufus", _QVAR_INT),
+                        QgsField("en_yuksek_acik", _QVAR_STRING),
+                        QgsField("donati_yeterlilik", _QVAR_DOUBLE),
+                        QgsField("feedback_durumu", _QVAR_STRING),
+                        QgsField("planlama_gerekcesi", _QVAR_STRING),
+                        QgsField("yazar", _QVAR_STRING),
+                    ])
+                    stoch_alloc_lyr.updateFields()
+
+                    stoch_feats = []
+                    for sa in stochastic_allocations:
+                        sf = QgsFeature(stoch_alloc_lyr.fields())
+                        sf.setGeometry(sa["geom"])
+                        sf["kaynak_ada_id"] = sa["ada_id"]
+                        sf["alan_m2"] = sa["alan_m2"]
+                        sf["stokastik_sira"] = sa["stokastik_sira"]
+                        sf["karar_turu"] = sa["karar_turu"]
+                        sf["atanan_kullanim"] = sa["atanan_kullanim"]
+                        sf["kod"] = sa["kod"]
+                        sf["ongorulen_nufus"] = sa["ongorulen_nufus"]
+                        sf["en_yuksek_acik"] = sa["en_yuksek_acik"]
+                        sf["donati_yeterlilik"] = sa["donati_yeterlilik_yuzdesi"]
+                        sf["feedback_durumu"] = sa["feedback_durumu"]
+                        sf["planlama_gerekcesi"] = sa["planlama_gerekcesi"]
+                        sf["yazar"] = PLUGIN_AUTHOR
+                        stoch_feats.append(sf)
+
+                    stoch_pr.addFeatures(stoch_feats)
+                    stoch_alloc_lyr.updateExtents()
+                    stoch_alloc_lyr.setAbstract(f"Adaptive Deficit Weighting & Stochastic Allocation — Author: {PLUGIN_AUTHOR}")
+                    self.apply_stochastic_allocation_symbology(stoch_alloc_lyr)
+
             # 9. Auto-run Plan vs Actual Use Discrepancy Analysis if layers are selected
             old_lyr = self.cmb_old_plan.currentData()
             act_lyr = self.cmb_actual_use.currentData()
@@ -2123,7 +2234,12 @@ class MPYYDonatiDialog(QDialog):
                 except Exception:
                     pass
 
-            for lyr_obj in (alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr):
+            layers_to_tag = [alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr]
+            if res_growth_lyr is not None:
+                layers_to_tag.append(res_growth_lyr)
+            if stoch_alloc_lyr is not None:
+                layers_to_tag.append(stoch_alloc_lyr)
+            for lyr_obj in layers_to_tag:
                 lyr_obj.setAbstract(f"Generated by MPYY Urban Facility Optimization Plugin — Author: {PLUGIN_AUTHOR}")
 
             self.apply_polygon_symbology(alloc_lyr, specs)
@@ -2132,7 +2248,8 @@ class MPYYDonatiDialog(QDialog):
             self._add_layers_to_grouped_tree(
                 alloc_lyr, passive_lyr, comm_out_lyr,
                 res_out_lyr, fac_pts_lyr, vac_pts_lyr,
-                res_growth_lyr=res_growth_lyr
+                res_growth_lyr=res_growth_lyr,
+                stoch_alloc_lyr=stoch_alloc_lyr,
             )
 
             html_report = self.build_html_report(
@@ -2140,6 +2257,8 @@ class MPYYDonatiDialog(QDialog):
                 unserved_pop_by_cat, overflow_pop_by_cat, bird_ok_road_fail_count,
                 allocated_summary, non_mpyy_summary, parcel_narrative_list,
                 res_growth_results=res_growth_results,
+                stochastic_profiles=stochastic_profiles,
+                stochastic_allocations=stochastic_allocations,
             )
             self.txt_report.setHtml(html_report)
             self.tabs.setCurrentIndex(2)
@@ -2174,7 +2293,8 @@ class MPYYDonatiDialog(QDialog):
                         node_entry[4] = True
 
     def _add_layers_to_grouped_tree(
-        self, alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr, res_growth_lyr=None
+        self, alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr,
+        res_growth_lyr=None, stoch_alloc_lyr=None
     ):
         proj = QgsProject.instance()
         root = proj.layerTreeRoot()
@@ -2194,6 +2314,10 @@ class MPYYDonatiDialog(QDialog):
         proj.addMapLayer(alloc_lyr, False)
         grp_mpyy.addLayer(alloc_lyr)
 
+        if stoch_alloc_lyr is not None and stoch_alloc_lyr.featureCount() > 0:
+            proj.addMapLayer(stoch_alloc_lyr, False)
+            grp_mpyy.addLayer(stoch_alloc_lyr)
+
         if res_growth_lyr is not None and res_growth_lyr.featureCount() > 0:
             proj.addMapLayer(res_growth_lyr, False)
             grp_mpyy.addLayer(res_growth_lyr)
@@ -2210,6 +2334,26 @@ class MPYYDonatiDialog(QDialog):
         if comm_out_lyr.featureCount() > 0:
             proj.addMapLayer(comm_out_lyr, False)
             grp_non_mpyy.addLayer(comm_out_lyr)
+
+    def apply_stochastic_allocation_symbology(self, layer):
+        cats = [
+            ("DONATI_ONERISI", "Önerilen Donatı Alanı (Yüksek Açık Ağırlıklı)", "#0284c7", "#0369a1"),
+            ("ONCELIKLI_KONUT_DENGE_OK", "Öncelikli Gelişme Konut Alanı (Kapasite & Denge Onaylı)", "#eab308", "#854d0e"),
+            ("SARTLI_KONUT_KAPASITE_UYARI", "Şartlı Gelişme Konut Alanı (Kapasite Aşımı Uyarısı)", "#f97316", "#9a3412"),
+        ]
+        renderer_cats = []
+        for val, label, hex_fill, hex_border in cats:
+            sym = QgsFillSymbol.createSimple({
+                "color": hex_fill,
+                "color_border": hex_border,
+                "width_border": "0.75",
+                "style": "solid",
+            })
+            sym.setOpacity(0.82)
+            renderer_cats.append(QgsRendererCategory(val, sym, label))
+        renderer = QgsCategorizedSymbolRenderer("kod", renderer_cats)
+        layer.setRenderer(renderer)
+        layer.triggerRepaint()
 
     def apply_residential_growth_symbology(self, layer):
         cats = [
@@ -2284,6 +2428,8 @@ class MPYYDonatiDialog(QDialog):
         unserved_pop_by_cat, overflow_pop_by_cat, bird_ok_road_fail_count,
         allocated_summary, non_mpyy_summary, parcel_narrative_list,
         res_growth_results=None,
+        stochastic_profiles=None,
+        stochastic_allocations=None,
     ):
         rows_html = ""
         for cat, sp in specs.items():
@@ -2444,6 +2590,130 @@ class MPYYDonatiDialog(QDialog):
             </table>
             """
 
+        stoch_html = ""
+        if stochastic_profiles or stochastic_allocations:
+            sp_rows = ""
+            if stochastic_profiles:
+                sorted_profiles = sorted(stochastic_profiles.values(), key=lambda x: x.get("stokastik_sira", 0))
+                for prof in sorted_profiles:
+                    ada_id = prof["ada_id"]
+                    pop = prof["nufus"]
+                    sat = prof["donati_yeterlilik_yuzdesi"]
+                    top_need = prof["en_oncelikli_ihtiyac"]
+                    top_w = prof["oncelikli_agirlik"]
+                    sira = prof["stokastik_sira"]
+
+                    m2_dict = prof["mevcut_m2_kisi"]
+                    w_dict = prof["ihtiyac_agirligi"]
+                    details_str = []
+                    for c_name, m2_val in m2_dict.items():
+                        w_val = w_dict.get(c_name, 0.0)
+                        details_str.append(f"{c_name}: {m2_val:.1f} m²/k (Açık: %{int(w_val*100)})")
+                    detail_text = " | ".join(details_str[:4])
+
+                    sat_color = "#16a34a" if sat >= 70 else ("#d97706" if sat >= 40 else "#dc2626")
+
+                    sp_rows += f"""
+                    <tr>
+                        <td align='center'><b>#{sira}</b></td>
+                        <td align='center'><b>Ada #{ada_id}</b></td>
+                        <td align='center'>{prof['area_m2']:,.1f} m²</td>
+                        <td align='center'><b>{int(pop):,} kişi</b></td>
+                        <td align='center' style='color:{sat_color}; font-weight:bold;'>%{sat:.1f}</td>
+                        <td align='center'><span style='color:#b91c1c; font-weight:bold;'>{top_need} (%{int(top_w*100)})</span></td>
+                        <td><small>{detail_text}</small></td>
+                    </tr>
+                    """
+
+            sa_rows = ""
+            if stochastic_allocations:
+                sorted_alloc = sorted(stochastic_allocations, key=lambda x: x.get("stokastik_sira", 0))
+                for sa in sorted_alloc:
+                    s_id = sa["ada_id"]
+                    s_area = sa["alan_m2"]
+                    s_sira = sa["stokastik_sira"]
+                    s_kullanim = sa["atanan_kullanim"]
+                    s_pop = sa["ongorulen_nufus"]
+                    s_kod = sa["kod"]
+                    s_sat = sa["donati_yeterlilik_yuzdesi"]
+                    s_fb = sa["feedback_durumu"]
+                    s_just = sa["planlama_gerekcesi"]
+
+                    badge_color = "#0284c7" if "DONATI" in s_kod else ("#eab308" if "OK" in s_kod else "#f97316")
+
+                    sa_rows += f"""
+                    <tr>
+                        <td align='center'><b>#{s_sira}</b></td>
+                        <td align='center'><b>Ada #{s_id}</b></td>
+                        <td align='center'>{s_area:,.1f} m²</td>
+                        <td align='center'><span style='display:inline-block;padding:2px 8px;border-radius:3px;background:{badge_color};color:white;font-weight:bold;'>{s_kullanim}</span></td>
+                        <td align='center'><b>{s_pop:,} kişi</b></td>
+                        <td align='center'>%{s_sat:.1f}</td>
+                        <td align='center'><b>{s_fb}</b></td>
+                        <td><small>{s_just}</small></td>
+                    </tr>
+                    """
+
+            stoch_html = f"""
+            <h3 style='margin-top:24px; color:#1e1b4b; border-bottom:2px solid #4338ca; padding-bottom:5px;'>
+                Akademik Planlama Modeli: Konut Başına Donatı İhtiyaç Ağırlıkları ve Stokastik Dengeleme Raporu
+            </h3>
+            <p style='font-size:12px; color:#334155; line-height:1.6;'>
+                <b>Yöntem ve Bilimsel Gerekçelendirme (Hoca Modeli):</b><br>
+                <b>1. Konut Adası Başına Kişi Başı Donatı Açığı ve İhtiyaç Ağırlığı Formülü:</b>
+                Her konut adası ($i$) için yürüme mesafesinde erişilebilen mevcut tesis alanı kişi başına ($s_{{i,k}}$) hesaplanır ve
+                yönetmelik standardı ($T_k$, örn. Park $10\\text{{ m}}^2$, İlkokul $2\\text{{ m}}^2$, Ortaokul $2\\text{{ m}}^2$, Sağlık $0.75\\text{{ m}}^2$)
+                ile karşılaştırılarak ihtiyaç açığı ağırlığı belirlenir:
+                <br><br>
+                <code style='background:#f1f5f9; padding:4px 8px; border-radius:4px; font-weight:bold;'>
+                W_{{i,k}} = \\max\\left(0, \\frac{{T_k - s_{{i,k}}}}{{T_k}}\\right) \\in [0.0, 1.0]
+                </code>
+                <br><br>
+                Örneğin bir adada $5\\text{{ m}}^2$ park (ihtiyaç $10$) ve $0.5\\text{{ m}}^2$ ilkokul (ihtiyaç $2$) varsa;
+                ilkokul açığı %75 ($W=0.75$) iken park açığı %50 ($W=0.50$)'dir. Sistem en yüksek ağırlığa sahip fonksiyona öncelik verir.
+                <br><br>
+                <b>2. Rastlantısal / Stokastik Tarama (Unbiased Spatial Order):</b>
+                Adalar coğrafi sıralama veya katman kimlik sırasına göre taranırsa kuzeydeki veya ilk adalar tüm donatıları tüketip güneydekileri mahrum bırakır (mekânsal yanlılık).
+                Bu nedenle konut adaları ve boş parseller stokastik (rastlantısal permütasyon) dizilimle işlenir; her ada eşit şansla taranır, denetlenen ada sisteme işlenerek bir sonrakine geçilir.
+                <br><br>
+                <b>3. Boş İmar Adaları Çift Rolü (Donatı vs Gelişme Konut):</b>
+                Çevre konut adalarının açık ağırlığı yüksekse boş ada doğrudan en çok ihtiyaç duyulan donatıya (örn. İlkokul) tahsis edilir ve çevre adaların açığı dinamik olarak düşürülür.
+                Eğer çevre donatılar yeterli ise alan 'Gelişme Konut Alanı' adayı olarak değerlendirilir.
+                <br><br>
+                <b>4. Kapasite ve Eşit Dağılım Geri-Beslemesi (Feedback Simulation):</b>
+                Boş adaya konut önerildiğinde alana eklenecek nüfus ($P_{{new}}$) simülasyona sokulur. İlave nüfus sonrasında çevredeki okul, sağlık ve parkların kişi başı standartların altına düşüp düşmediği ($s_k' < T_k$) ve bina kapasite sınırları denetlenir; aşım yoksa 'Kapasite & Denge Onaylı', aşım riski varsa 'Şartlı Gelişme Konut' olarak etiketlenir.
+            </p>
+
+            <h4 style='color:#312e81; margin-top:14px;'>Tablo 1: Konut Adaları Donatı $m^2/\\text{{Kişi}}$ ve İhtiyaç Ağırlıkları (Stokastik Tarama)</h4>
+            <table border='1' cellspacing='0' cellpadding='6' width='100%' style='border-collapse:collapse; font-size:12px;'>
+                <tr style='background-color:#312e81; color:white;'>
+                    <th>Sıra</th>
+                    <th>Konut Adası</th>
+                    <th>Alan (m²)</th>
+                    <th>Nüfus</th>
+                    <th>Donatı Yeterliliği</th>
+                    <th>En Öncelikli İhtiyaç (Açık %)</th>
+                    <th>Mevcut $m^2/\\text{{kişi}}$ ve Açık Ağırlıkları</th>
+                </tr>
+                {sp_rows}
+            </table>
+
+            <h4 style='color:#065f46; margin-top:18px;'>Tablo 2: Boş İmar Adaları Stokastik Tahsis ve Geri-Besleme (Feedback) Denetimi</h4>
+            <table border='1' cellspacing='0' cellpadding='6' width='100%' style='border-collapse:collapse; font-size:12px;'>
+                <tr style='background-color:#065f46; color:white;'>
+                    <th>Sıra</th>
+                    <th>Boş İmar Adası</th>
+                    <th>Alan (m²)</th>
+                    <th>Atanan Kullanım</th>
+                    <th>Öngörülen Nüfus</th>
+                    <th>Çevre Yeterlilik</th>
+                    <th>Geri-Besleme (Feedback) Durumu</th>
+                    <th>Planlama Gerekçesi</th>
+                </tr>
+                {sa_rows}
+            </table>
+            """
+
         narratives_html = "".join([f"<li style='margin-bottom:8px;'>{n}</li>" for n in parcel_narrative_list])
 
         return f"""
@@ -2478,6 +2748,7 @@ class MPYYDonatiDialog(QDialog):
             <h3 style='margin-top:16px; color:#14532d;'>MPYY Dışı Tamamlayıcı Planlama Katmanları (Pasif Yeşil & Ticari Demo)</h3>
             {non_mpyy_html}
             {res_growth_html}
+            {stoch_html}
             {diff_html}
             <h3 style='margin-top:18px;'>İmar Adaları Çoklu İfraz, Kapasite Rahatlatma ve Atama Açıklamaları</h3>
             <ul style='font-size:13px; line-height:1.5;'>

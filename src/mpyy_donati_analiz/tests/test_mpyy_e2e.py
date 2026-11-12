@@ -37,6 +37,7 @@ from mpyy_donati_analiz.mpyy_engine import (
     split_polygon_by_ratios,
     PlanActualDiffEngine,
     ResidentialGrowthNetworkEvaluator,
+    AdaptiveAmenityWeightingEngine,
 )
 from mpyy_donati_analiz.mpyy_dialog import MPYYDonatiDialog
 from qgis.core import QgsField
@@ -238,6 +239,98 @@ class TestMPYYDonatiAnalizE2E(unittest.TestCase):
         self.assertEqual(len(growth_layers), 1)
         self.assertIn("Gelişme Konut Alanı", dlg.txt_report.toHtml())
 
+        dlg.close()
+
+    def test_07_adaptive_amenity_weighting_engine(self):
+        crs = QgsCoordinateReferenceSystem("EPSG:5253")
+        self.assertEqual(AdaptiveAmenityWeightingEngine.get_normative_standard_m2("park"), 10.0)
+        self.assertEqual(AdaptiveAmenityWeightingEngine.get_normative_standard_m2("ilkokul"), 2.0)
+        self.assertEqual(AdaptiveAmenityWeightingEngine.get_normative_standard_m2("asm"), 0.75)
+
+        # Build simple road network
+        net_lyr = QgsVectorLayer("LineString?crs=EPSG:5253", "roads", "memory")
+        npr = net_lyr.dataProvider()
+        f_net = QgsFeature()
+        f_net.setGeometry(QgsGeometry.fromPolylineXY([
+            QgsPointXY(500000, 4250000),
+            QgsPointXY(500600, 4250000)
+        ]))
+        npr.addFeatures([f_net])
+        net_lyr.updateExtents()
+        graph = FastRoadGraph(net_lyr, target_crs=crs)
+
+        # 2 residential blocks: one near school, one far
+        res_feats = [
+            (1, QgsPointXY(500100, 4250020), 5000.0, 0, 20.0),
+            (2, QgsPointXY(500500, 4250020), 5000.0, 1, 20.0),
+        ]
+        fac_by_type = {
+            "ilkokul": [[1, QgsPointXY(500100, 4250000), 1000, 2000.0, 400.0]],
+            "park": [[2, QgsPointXY(500500, 4250000), 2000, 5000.0, 500.0]],
+        }
+        specs = {
+            "ilkokul": {"key_id": "ilkokul", "std_m2": 2.0, "net_r": 500.0, "min_area": 5000.0, "unit_cap": 2500},
+            "park": {"key_id": "park", "std_m2": 10.0, "net_r": 500.0, "min_area": 1000.0, "unit_cap": 5000},
+        }
+        net_dist_maps = {
+            "ilkokul": graph.multi_source_dijkstra([QgsPointXY(500100, 4250000)]),
+            "park": graph.multi_source_dijkstra([QgsPointXY(500500, 4250000)]),
+        }
+
+        profiles, ordered = AdaptiveAmenityWeightingEngine.compute_block_amenity_profiles(
+            res_feats=res_feats,
+            graph=graph,
+            fac_by_type=fac_by_type,
+            specs=specs,
+            total_pop=2000,
+            net_dist_maps=net_dist_maps,
+            randomize_order=True,
+            seed=42
+        )
+        self.assertEqual(len(profiles), 2)
+        self.assertEqual(len(ordered), 2)
+        for prof in ordered:
+            self.assertIn("mevcut_m2_kisi", prof)
+            self.assertIn("ihtiyac_agirligi", prof)
+            self.assertIn("stokastik_sira", prof)
+            self.assertTrue(0.0 <= prof["donati_yeterlilik_yuzdesi"] <= 100.0)
+
+        # Vacant block test with dual decision & feedback
+        cand_geom = QgsGeometry.fromPolygonXY([[
+            QgsPointXY(500300, 4250020),
+            QgsPointXY(500400, 4250020),
+            QgsPointXY(500400, 4250100),
+            QgsPointXY(500300, 4250100),
+            QgsPointXY(500300, 4250020)
+        ]])
+        vf = QgsFeature()
+        vf.setGeometry(cand_geom)
+        vf.setId(201)
+
+        allocs = AdaptiveAmenityWeightingEngine.evaluate_and_allocate_vacant_blocks(
+            vac_feats=[vf],
+            block_profiles=profiles,
+            graph=graph,
+            specs=specs,
+            fac_by_type=fac_by_type,
+            gross_density_pop_per_ha=180.0,
+            satisfaction_threshold=0.35,
+            randomize_vacant=True,
+            seed=42
+        )
+        self.assertEqual(len(allocs), 1)
+        self.assertIn("kod", allocs[0])
+        self.assertIn("feedback_durumu", allocs[0])
+        self.assertIn("stokastik_sira", allocs[0])
+
+        # Also verify layer generation via MPYYDonatiDialog
+        QgsProject.instance().clear()
+        dlg = MPYYDonatiDialog(None)
+        dlg.create_demo_layers()
+        dlg.run_full_analysis(show_msg=False)
+        stoch_lyrs = QgsProject.instance().mapLayersByName("MPYY_Stokastik_Dengeleme_Konut_ve_Donati")
+        self.assertEqual(len(stoch_lyrs), 1)
+        self.assertIn("Akademik Planlama Modeli: Konut Başına Donatı İhtiyaç Ağırlıkları", dlg.txt_report.toHtml())
         dlg.close()
 
 

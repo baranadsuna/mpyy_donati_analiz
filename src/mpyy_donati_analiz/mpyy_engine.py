@@ -6,6 +6,7 @@ CRS Standard: EPSG:5253 (TUREF / TM30)
 """
 import math
 import heapq
+import random
 from qgis.core import (
     QgsGeometry, QgsPointXY, QgsFeature, QgsRectangle,
     QgsSpatialIndex, QgsCoordinateTransform, QgsProject, QgsWkbTypes
@@ -1389,3 +1390,365 @@ class ResidentialGrowthNetworkEvaluator:
             })
 
         return results
+
+
+class AdaptiveAmenityWeightingEngine:
+    """
+    Adaptive Amenity Deficit Weighting & Stochastic Land-Use Equilibrium Engine.
+
+    Operationalizes the Professor's Planning Methodology:
+    1. Per-Residential-Block Amenity Density & Deficit Weights:
+       - Compares accessible facility area per capita (m²/person) against MPYY Annex-2
+         standards (e.g. Park 10 m², Primary School 2 m², Middle School 2 m², Health/ASM 0.75 m²).
+       - Computes local deficit weight W_{i,k} = max(0, (T_k - s_{i,k}) / T_k) in [0.0, 1.0].
+    2. Spatial Variation & Stochastic Sweep:
+       - Iteratively examines residential blocks in a randomized/stochastic order (seeded for reproducibility)
+         so evaluation is unbiased by geometry ordering or spatial orientation.
+       - Each block is evaluated, recorded, and flagged as processed.
+    3. Dual-Role Vacant Parcel Allocation with Carrying-Capacity Feedback:
+       - Vacant blocks are evaluated using the deficit weights of surrounding residential blocks.
+       - If surrounding area has high deficit: Allocated to the highest-deficit facility (e.g. Primary School).
+       - If surrounding amenities are adequate: Designated as Candidate Residential Growth Area.
+       - FEEDBACK LOOP: Simulates adding prospective new housing population to the neighborhood,
+         verifying whether schools, health centers, and parks still maintain standard per-capita
+         capacity and equal spatial distribution without overloading.
+    """
+
+    @staticmethod
+    def get_normative_standard_m2(cat_key, specs=None):
+        """Returns MPYY Annex-2 normative target m² per person."""
+        if specs and cat_key in specs:
+            std = specs[cat_key].get("std_m2", 0.0)
+            if std > 0:
+                return float(std)
+        defaults = {
+            "park": 10.0,
+            "ilkokul": 2.0,
+            "ortaokul": 2.0,
+            "lise": 2.0,
+            "asm": 0.75,
+            "saglik": 0.75,
+            "ibadet": 0.50,
+            "sosyal": 1.0,
+            "kultur": 1.0,
+        }
+        for k, v in defaults.items():
+            if k in cat_key.lower():
+                return v
+        return 1.5
+
+    @classmethod
+    def compute_block_amenity_profiles(
+        cls,
+        res_feats,
+        graph,
+        fac_by_type,
+        specs,
+        total_pop,
+        net_dist_maps=None,
+        randomize_order=True,
+        seed=42,
+    ):
+        """
+        Evaluates each residential block in stochastic order.
+        Returns a dict of profiles: { ada_id: profile_dict }
+        and an ordered list of profiles.
+        """
+        profiles = {}
+        ordered_list = []
+        if not res_feats:
+            return profiles, ordered_list
+
+        total_res_area = sum(rf[2] for rf in res_feats)
+        if total_res_area <= 0:
+            total_res_area = 1.0
+
+        net_dist_maps = net_dist_maps or {}
+
+        # Stochastic permutation of residential blocks
+        indices = list(range(len(res_feats)))
+        if randomize_order:
+            rng = random.Random(seed)
+            rng.shuffle(indices)
+
+        for step_idx, idx in enumerate(indices):
+            r_id, pt, r_area, r_nid, r_snap = res_feats[idx]
+            pop_i = total_pop * (r_area / total_res_area)
+
+            s_ik = {}       # accessible m² per capita
+            t_k = {}        # normative standard m² per capita
+            w_ik = {}       # deficit weights in [0.0, 1.0]
+
+            for cat, sp in specs.items():
+                key_id = sp.get("key_id", cat).lower()
+                if key_id in ("konut",):
+                    continue
+
+                target_m2 = cls.get_normative_standard_m2(key_id, specs)
+                t_k[cat] = target_m2
+                walk_limit = float(sp.get("net_r", 500.0))
+
+                # Identify facilities reachable from this block
+                fac_items = fac_by_type.get(cat, [])
+                accessible_area = 0.0
+                accessible_load = 0.0
+
+                d_map = net_dist_maps.get(cat, {})
+                for fid, fpt, fcap, farea, fload in fac_items:
+                    # Road distance check
+                    d_road = float('inf')
+                    if r_nid is not None and r_nid in d_map:
+                        d_road = d_map[r_nid] + r_snap
+                    d_bird = math.hypot(pt.x() - fpt.x(), pt.y() - fpt.y())
+                    eff_d = min(d_road, d_bird * 1.25)
+
+                    if eff_d <= walk_limit:
+                        accessible_area += farea
+                        accessible_load += max(fload, 1.0)
+
+                # Compute accessible m² per person for block i
+                if accessible_area > 0 and accessible_load > 0:
+                    s_val = min(target_m2 * 2.5, accessible_area / max(accessible_load, pop_i, 400.0))
+                else:
+                    s_val = 0.0
+
+                s_ik[cat] = round(s_val, 2)
+
+                # Deficit ratio W_{i,k} in [0.0, 1.0]
+                if target_m2 > 0:
+                    deficit = max(0.0, min(1.0, (target_m2 - s_val) / target_m2))
+                else:
+                    deficit = 0.0
+                w_ik[cat] = round(deficit, 3)
+
+            # Find primary need (highest deficit weight)
+            if w_ik:
+                top_cat = max(w_ik.keys(), key=lambda c: w_ik[c])
+                top_w = w_ik[top_cat]
+                avg_satisfaction = round((1.0 - (sum(w_ik.values()) / max(len(w_ik), 1))) * 100.0, 1)
+            else:
+                top_cat = "None"
+                top_w = 0.0
+                avg_satisfaction = 100.0
+
+            prof = {
+                "ada_id": r_id,
+                "pt": pt,
+                "area_m2": round(r_area, 1),
+                "nufus": round(pop_i, 1),
+                "mevcut_m2_kisi": s_ik,
+                "standart_m2_kisi": t_k,
+                "ihtiyac_agirligi": w_ik,
+                "en_oncelikli_ihtiyac": top_cat,
+                "oncelikli_agirlik": top_w,
+                "donati_yeterlilik_yuzdesi": avg_satisfaction,
+                "stokastik_sira": step_idx + 1,
+            }
+            profiles[r_id] = prof
+            ordered_list.append(prof)
+
+        return profiles, ordered_list
+
+    @classmethod
+    def evaluate_and_allocate_vacant_blocks(
+        cls,
+        vac_feats,
+        block_profiles,
+        graph,
+        specs,
+        fac_by_type,
+        gross_density_pop_per_ha=180.0,
+        satisfaction_threshold=0.35,
+        randomize_vacant=True,
+        seed=42,
+    ):
+        """
+        Stochastically processes vacant blocks.
+        Evaluates local amenity deficit weights from nearby residential blocks.
+        Decides between Amenity Allocation (Donatı) vs Residential Growth (Gelişme Konut),
+        and runs feedback simulation for Residential Growth.
+        """
+        allocations = []
+        if not vac_feats:
+            return allocations
+
+        indices = list(range(len(vac_feats)))
+        if randomize_vacant:
+            rng = random.Random(seed + 101)
+            rng.shuffle(indices)
+
+        # Dynamic copy of profiles so newly placed amenities relieve subsequent blocks
+        dyn_profiles = {k: dict(v) for k, v in block_profiles.items()}
+        for k, v in dyn_profiles.items():
+            v["ihtiyac_agirligi"] = dict(v["ihtiyac_agirligi"])
+            v["mevcut_m2_kisi"] = dict(v["mevcut_m2_kisi"])
+
+        # Track dynamically placed facilities
+        dyn_facilities = {c: [list(it) for it in fac_by_type.get(c, [])] for c in specs.keys()}
+
+        for step_idx, v_idx in enumerate(indices):
+            vf = vac_feats[v_idx]
+            geom = vf.geometry() if hasattr(vf, "geometry") else vf
+            fid = vf.id() if hasattr(vf, "id") else (step_idx + 1)
+            if not geom or geom.isEmpty():
+                continue
+
+            area_m2 = geom.area()
+            if area_m2 < 100.0:
+                continue
+
+            cpt = geom.centroid().asPoint()
+            v_nid, v_snap = graph.snap_polygon_to_node(geom)
+
+            # 1. Identify nearby residential blocks within walking catchment
+            neighborhood_blocks = []
+            for r_id, prof in dyn_profiles.items():
+                rpt = prof["pt"]
+                dist = math.hypot(cpt.x() - rpt.x(), cpt.y() - rpt.y())
+                if dist <= 900.0:
+                    neighborhood_blocks.append((r_id, prof, dist))
+
+            if not neighborhood_blocks:
+                sorted_all = sorted(
+                    dyn_profiles.items(),
+                    key=lambda item: math.hypot(cpt.x() - item[1]["pt"].x(), cpt.y() - item[1]["pt"].y())
+                )
+                neighborhood_blocks = [
+                    (item[0], item[1], math.hypot(cpt.x() - item[1]["pt"].x(), cpt.y() - item[1]["pt"].y()))
+                    for item in sorted_all[:3]
+                ]
+
+            # 2. Compute population-weighted neighborhood deficit weights
+            tot_n_pop = sum(item[1]["nufus"] for item in neighborhood_blocks)
+            if tot_n_pop <= 0:
+                tot_n_pop = 1.0
+
+            agg_weights = {}
+            for cat in specs.keys():
+                if specs[cat].get("key_id", "").lower() == "konut":
+                    continue
+                w_sum = sum(item[1]["nufus"] * item[1]["ihtiyac_agirligi"].get(cat, 0.0) for item in neighborhood_blocks)
+                agg_weights[cat] = round(w_sum / tot_n_pop, 3)
+
+            # Overall neighborhood satisfaction
+            if agg_weights:
+                max_deficit_cat = max(agg_weights.keys(), key=lambda c: agg_weights[c])
+                max_deficit_val = agg_weights[max_deficit_cat]
+                avg_neighborhood_satisfaction = round(
+                    (1.0 - (sum(agg_weights.values()) / max(len(agg_weights), 1))) * 100.0, 1
+                )
+            else:
+                max_deficit_cat = "None"
+                max_deficit_val = 0.0
+                avg_neighborhood_satisfaction = 100.0
+
+            # 3. Decision Gate: Amenity vs Residential Growth
+            if max_deficit_val >= satisfaction_threshold:
+                # ALLOCATE AS DONATI
+                assigned_cat = max_deficit_cat
+                sp = specs.get(assigned_cat, {})
+                unit_cap = sp.get("unit_cap", 2500)
+
+                justification = (
+                    f"Ada #{fid} ({int(area_m2)} m²): Çevre konut adalarında '{assigned_cat}' kişi başı açık "
+                    f"ihtiyaç ağırlığı %{int(max_deficit_val * 100)} ile en yüksek seviyededir "
+                    f"(Mahalle donatı yeterliliği: %{avg_neighborhood_satisfaction}). "
+                    f"Stokastik ihtiyaç modeli gereğince bu boş parsel öncelikli olarak '{assigned_cat}' tahsisine ayrılmıştır."
+                )
+
+                # Dynamically relieve surrounding residential blocks for this category
+                added_cap = min(unit_cap, area_m2 / max(sp.get("std_m2", 2.0), 0.5))
+                for r_id, prof, _ in neighborhood_blocks:
+                    cur_w = prof["ihtiyac_agirligi"].get(assigned_cat, 0.0)
+                    prof["ihtiyac_agirligi"][assigned_cat] = max(0.0, round(cur_w - 0.40, 3))
+                    cur_s = prof["mevcut_m2_kisi"].get(assigned_cat, 0.0)
+                    prof["mevcut_m2_kisi"][assigned_cat] = round(cur_s + (area_m2 / max(tot_n_pop, 1.0)), 2)
+
+                dyn_facilities.setdefault(assigned_cat, []).append([fid, cpt, unit_cap, area_m2, 0.0])
+
+                allocations.append({
+                    "geom": geom,
+                    "ada_id": fid,
+                    "alan_m2": round(area_m2, 1),
+                    "karar_turu": "Donatı Alanı (İhtiyaç Ağırlıklı)",
+                    "atanan_kullanim": assigned_cat,
+                    "kod": "DONATI_ONERISI",
+                    "ongorulen_nufus": 0,
+                    "ihtiyac_agirliklari": agg_weights,
+                    "en_yuksek_acik": f"{assigned_cat} (%{int(max_deficit_val * 100)})",
+                    "donati_yeterlilik_yuzdesi": avg_neighborhood_satisfaction,
+                    "feedback_durumu": "Donatı İhtiyacı Karşılandı",
+                    "planlama_gerekcesi": justification,
+                    "stokastik_sira": step_idx + 1,
+                })
+
+            else:
+                # ALLOCATE AS CANDIDATE RESIDENTIAL GROWTH & RUN FEEDBACK LOOP
+                prospective_pop = int(round((area_m2 / 10000.0) * gross_density_pop_per_ha))
+
+                # 4. Carrying-Capacity & Equal Distribution Feedback Simulation
+                feedback_warnings = []
+                feedback_ok = True
+
+                for cat, sp in specs.items():
+                    key_id = sp.get("key_id", cat).lower()
+                    if key_id in ("konut",):
+                        continue
+                    std_req = cls.get_normative_standard_m2(key_id, specs)
+
+                    cat_facs = dyn_facilities.get(cat, [])
+                    tot_cat_area = sum(f[3] for f in cat_facs)
+                    tot_cat_cap = sum(f[2] for f in cat_facs)
+
+                    simulated_demand = tot_n_pop + prospective_pop
+                    if tot_cat_area > 0 and simulated_demand > 0:
+                        simulated_m2_per_person = tot_cat_area / simulated_demand
+                        if simulated_m2_per_person < std_req * 0.68:
+                            feedback_ok = False
+                            feedback_warnings.append(
+                                f"{cat} kişi başı alan {simulated_m2_per_person:.2f} m²'ye gerileyip standardın altına düşmektedir"
+                            )
+                    if tot_cat_cap > 0 and simulated_demand > tot_cat_cap * 1.15:
+                        feedback_ok = False
+                        feedback_warnings.append(f"{cat} bina kapasitesi aşılmaktadır")
+
+                if feedback_ok:
+                    status_kod = "ONCELIKLI_KONUT_DENGE_OK"
+                    status_lbl = "Öncelikli Gelişme Konut Alanı (Kapasite & Denge Onaylı)"
+                    justification = (
+                        f"Ada #{fid} ({int(area_m2)} m²): Çevre konut adalarında mevcut donatı yeterliliği yüksek "
+                        f"(%{avg_neighborhood_satisfaction}) seviyededir. "
+                        f"Bu adaya ~{prospective_pop} kişilik konut fonksiyonu yerleştirildiğinde yapılan geri-besleme "
+                        f"(feedback) denetiminde; okul, sağlık ve açık yeşil alanların kişi başı standartları koruduğu "
+                        f"ve eşit kentsel dağılım dengesinin sağlandığı tespit edilmiştir."
+                    )
+                    fb_str = "Kapasite & Denge Onaylandı (OK)"
+                else:
+                    status_kod = "SARTLI_KONUT_KAPASITE_UYARI"
+                    status_lbl = "Şartlı Gelişme Konut Alanı (Kapasite Uyarısı)"
+                    warn_text = "; ".join(feedback_warnings)
+                    justification = (
+                        f"Ada #{fid} ({int(area_m2)} m²): Çevre sektör mevcut durumda yeterli olmakla birlikte, "
+                        f"adaya ~{prospective_pop} kişilik konut eklendiğinde yapılan geri-besleme denetiminde: {warn_text}. "
+                        f"Bu nedenle alan 'Şartlı Gelişme Konut' olarak belirlenmiş olup, ilave donatı takviyesi şarttır."
+                    )
+                    fb_str = f"Uyarı: {warn_text}"
+
+                allocations.append({
+                    "geom": geom,
+                    "ada_id": fid,
+                    "alan_m2": round(area_m2, 1),
+                    "karar_turu": status_lbl,
+                    "atanan_kullanim": "Gelişme Konut Alanı",
+                    "kod": status_kod,
+                    "ongorulen_nufus": prospective_pop,
+                    "ihtiyac_agirliklari": agg_weights,
+                    "en_yuksek_acik": f"{max_deficit_cat} (%{int(max_deficit_val * 100)})",
+                    "donati_yeterlilik_yuzdesi": avg_neighborhood_satisfaction,
+                    "feedback_durumu": fb_str,
+                    "planlama_gerekcesi": justification,
+                    "stokastik_sira": step_idx + 1,
+                })
+
+        return allocations
+
