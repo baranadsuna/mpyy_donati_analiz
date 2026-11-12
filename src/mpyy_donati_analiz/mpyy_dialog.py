@@ -117,6 +117,13 @@ TRANSLATIONS = {
         "diff_done_msg": "'Plan_ve_Fiili_Kullanim_Karsilastirma' katmanı başarıyla üretildi ve haritaya eklendi!",
         "warn_diff_missing_title": "Eksik Karşılaştırma Katmanı",
         "warn_diff_missing_msg": "Lütfen Eski / Onaylı Plan ve Mevcut Fiili Kullanım poligon katmanlarını seçiniz!",
+        "grp_out": "4. Çıktı Katmanları ve Görünürlük Tercihleri (Haritada Gösterilecekleri Seçin)",
+        "chk_out_donati": "Önerilen Donatı Alanları (MPYY Ek-2: Okul, ASM, İbadet, Park)",
+        "chk_out_konut": "Önerilen Konut Adaları (Ayrı Konut Katmanı)",
+        "chk_out_stochastic": "Stokastik İhtiyaç Dengeleme Katmanı (Hoca Modeli)",
+        "chk_out_res_growth": "15-Dakikalık Şehir Konut Değerlendirme Katmanı",
+        "chk_out_passive": "Pasif Yeşil Alanlar (Tampon / Refüj Yeşili)",
+        "chk_out_comm": "Önerilen Ticari Alanlar (Erişim Demo)",
     },
     "en": {
         "win_title": f"MPYY Urban Facility Accessibility, Capacity & Subdivision — Author: {PLUGIN_AUTHOR}",
@@ -187,6 +194,13 @@ TRANSLATIONS = {
         "diff_done_msg": "'Plan_ve_Fiili_Kullanim_Karsilastirma' layer successfully generated and styled on map!",
         "warn_diff_missing_title": "Missing Comparison Layers",
         "warn_diff_missing_msg": "Please select both Old / Approved Master Plan and Current Actual Use polygon layers!",
+        "grp_out": "4. Output Layers & Visibility Preferences (Select Layers to Show on Map)",
+        "chk_out_donati": "Proposed Amenity Areas (MPYY Annex-2: School, Health, Worship, Park)",
+        "chk_out_konut": "Proposed Residential Blocks (Dedicated Housing Layer)",
+        "chk_out_stochastic": "Stochastic Equilibrium Layer (Academic Model)",
+        "chk_out_res_growth": "15-Minute City Residential Suitability Layer",
+        "chk_out_passive": "Passive Green Buffers (Roadside / Median Green)",
+        "chk_out_comm": "Proposed Commercial Areas (Access Demo)",
     },
     "zh": {
         "win_title": f"MPYY 城市公共设施可达性与空间优化系统 — 作者: {PLUGIN_AUTHOR}",
@@ -251,6 +265,13 @@ TRANSLATIONS = {
         "diff_done_msg": "'Plan_ve_Fiili_Kullanim_Karsilastirma' 图层已生成并渲染至地图！",
         "warn_diff_missing_title": "缺少对比图层",
         "warn_diff_missing_msg": "请同时选择原规划图层与现状实际利用多边形图层！",
+        "grp_out": "4. 输出图层与可见性选项（勾选需要在地图上显示的图层）",
+        "chk_out_donati": "建议公共设施用地（MPYY附表2：学校、医疗、宗教、公园）",
+        "chk_out_konut": "建议居住街坊（独立居住用地图层）",
+        "chk_out_stochastic": "随机需求均衡图层（学术模型）",
+        "chk_out_res_growth": "15分钟城市居住适宜性评估图层",
+        "chk_out_passive": "被动绿地缓冲区（道路缓冲/隔离绿化）",
+        "chk_out_comm": "建议商业用地（可达性演示）",
     },
     "es": {
         "win_title": f"MPYY Accesibilidad de Instalaciones Urbanas y Optimización — Autor: {PLUGIN_AUTHOR}",
@@ -315,6 +336,13 @@ TRANSLATIONS = {
         "diff_done_msg": "¡La capa 'Plan_ve_Fiili_Kullanim_Karsilastirma' se ha generado y renderizado con éxito en el mapa!",
         "warn_diff_missing_title": "Capas Faltantes para Comparación",
         "warn_diff_missing_msg": "¡Por favor seleccione tanto el Plan Anterior como la Capa de Uso Actual del Suelo!",
+        "grp_out": "4. Capas de Salida y Preferencias de Visibilidad (Seleccione para Mostrar en el Mapa)",
+        "chk_out_donati": "Áreas de Dotación Propuestas (MPYY Anexo-2: Escuela, Salud, Culto, Parque)",
+        "chk_out_konut": "Manzanas Residenciales Propuestas (Capa Residencial Exclusiva)",
+        "chk_out_stochastic": "Capa de Equilibrio Estocástico (Modelo Académico)",
+        "chk_out_res_growth": "Capa de Idoneidad Residencial Ciudad de 15 Minutos",
+        "chk_out_passive": "Zonas Verdes Pasivas (Amortiguador Vial / Mediana)",
+        "chk_out_comm": "Áreas Comerciales Propuestas (Demo de Acceso)",
     }
 }
 
@@ -666,6 +694,37 @@ class MPYYDonatiDialog(QDialog):
         tbl_layout.addLayout(btn_row)
 
         layout_inputs.addWidget(self.grp_table, stretch=1)
+
+        # 4. Output Layers & Visibility Preferences Group
+        self.grp_outputs = QGroupBox()
+        out_grid = QGridLayout(self.grp_outputs)
+        out_grid.setSpacing(6)
+
+        self.chk_out_donati = QCheckBox()
+        self.chk_out_donati.setChecked(True)
+        out_grid.addWidget(self.chk_out_donati, 0, 0)
+
+        self.chk_out_konut = QCheckBox()
+        self.chk_out_konut.setChecked(True)
+        out_grid.addWidget(self.chk_out_konut, 0, 1)
+
+        self.chk_out_stochastic = QCheckBox()
+        self.chk_out_stochastic.setChecked(True)
+        out_grid.addWidget(self.chk_out_stochastic, 1, 0)
+
+        self.chk_out_res_growth = QCheckBox()
+        self.chk_out_res_growth.setChecked(True)
+        out_grid.addWidget(self.chk_out_res_growth, 1, 1)
+
+        self.chk_out_passive = QCheckBox()
+        self.chk_out_passive.setChecked(True)
+        out_grid.addWidget(self.chk_out_passive, 2, 0)
+
+        self.chk_out_comm = QCheckBox()
+        self.chk_out_comm.setChecked(True)
+        out_grid.addWidget(self.chk_out_comm, 2, 1)
+
+        layout_inputs.addWidget(self.grp_outputs)
         self.tabs.addTab(tab_inputs, "")
 
         # ----------------------------------------------------
@@ -826,6 +885,14 @@ class MPYYDonatiDialog(QDialog):
         self.btn_reset_mpyy.setText(t["btn_reset"])
         self.btn_demo.setText(t["btn_demo"])
         self.btn_run.setText(t["btn_run"])
+
+        self.grp_outputs.setTitle(t["grp_out"])
+        self.chk_out_donati.setText(t["chk_out_donati"])
+        self.chk_out_konut.setText(t["chk_out_konut"])
+        self.chk_out_stochastic.setText(t["chk_out_stochastic"])
+        self.chk_out_res_growth.setText(t["chk_out_res_growth"])
+        self.chk_out_passive.setText(t["chk_out_passive"])
+        self.chk_out_comm.setText(t["chk_out_comm"])
 
         if self.cmb_commercial_poly.count() > 0:
             self.cmb_commercial_poly.setItemText(0, t["auto_comm_layer"])
@@ -1547,6 +1614,22 @@ class MPYYDonatiDialog(QDialog):
             alloc_pr.addAttributes(alloc_fields)
             alloc_lyr.updateFields()
 
+            # Dedicated Proposed Residential Blocks Layer (Strictly separate from MPYY Amenities)
+            konut_out_lyr = QgsVectorLayer(f"Polygon?crs={crs_auth}", "Onerilen_Konut_Adalari", "memory")
+            konut_out_pr = konut_out_lyr.dataProvider()
+            konut_fields = QgsFields()
+            konut_fields.append(QgsField("kaynak_ada_id", _QVAR_INT))
+            konut_fields.append(QgsField("parca_no", _QVAR_INT))
+            konut_fields.append(QgsField("kullanim_turu", _QVAR_STRING))
+            konut_fields.append(QgsField("alan_m2", _QVAR_DOUBLE))
+            konut_fields.append(QgsField("ongorulen_nufus", _QVAR_INT))
+            konut_fields.append(QgsField("yol_erisim_skoru", _QVAR_DOUBLE))
+            konut_fields.append(QgsField("komsu_donatilar", _QVAR_STRING))
+            konut_fields.append(QgsField("planlama_gerekcesi", _QVAR_STRING))
+            konut_fields.append(QgsField("yazar", _QVAR_STRING))
+            konut_out_pr.addAttributes(konut_fields)
+            konut_out_lyr.updateFields()
+
             # Non-MPYY Layer 1: Passive Green Areas (Tampon / Refüj / Kavşak Yeşili)
             passive_lyr = QgsVectorLayer(f"Polygon?crs={crs_auth}", "Onerilen_Pasif_Yesil_Alanlar", "memory")
             passive_pr = passive_lyr.dataProvider()
@@ -1603,6 +1686,7 @@ class MPYYDonatiDialog(QDialog):
             }
             parcel_narrative_list = []
             out_alloc_features = []
+            out_konut_features = []
             out_passive_features = []
             out_comm_features = []
 
@@ -1653,6 +1737,17 @@ class MPYYDonatiDialog(QDialog):
                 eval_pt = pgeom.centroid().asPoint()
                 v_nid, v_snap = graph.snap_polygon_to_node(pgeom)
                 vac_dist_map = graph.multi_source_dijkstra([eval_pt], max_cutoff=2800.0)
+
+                # Proximity to existing and newly placed parks (to prevent creating redundant giant parks)
+                d_exist_park = min(
+                    (math.hypot(eval_pt.x() - it[1].x(), eval_pt.y() - it[1].y()) for it in fac_by_type.get(park_cat, [])),
+                    default=float('inf')
+                )
+                d_new_park = min(
+                    (math.hypot(eval_pt.x() - np_pt.x(), eval_pt.y() - np_pt.y()) for np_pt, _, _ in newly_placed_points.get(park_cat, [])),
+                    default=float('inf')
+                )
+                nearby_park_adequate = (min(d_exist_park, d_new_park) <= 450.0)
 
                 # CASE A: Small / Narrow / Triangular Traffic Islands & Roadside Strips -> Non-MPYY Passive Green!
                 is_passive_green_island = (
@@ -1838,21 +1933,35 @@ class MPYYDonatiDialog(QDialog):
                     continue
 
                 if not aday_donatilar:
-                    if (
-                        self.chk_auto_split.isChecked()
-                        and res_growth_cat
-                        and not is_triangular_medium_block
-                        and block_rect_fill >= 0.78
-                        and 3500.0 <= poly_area <= 19000.0
-                        and nearby_built_count >= 1
-                        and (idx_v % 2 == 1)
-                    ):
-                        fallback_cat = res_growth_cat
+                    if nearby_park_adequate or (block_rect_fill >= 0.70 and poly_area >= 2500.0 and not is_triangular_medium_block):
+                        # Allocate as Dedicated Proposed Housing Block (Onerilen_Konut_Adalari)
                         etki_val = int(round(poly_area / 35.0))
-                        aciklama = (
-                            f"Ada #{pf.id()} ({int(poly_area)} m²): Çevre sektörde okul, ibadet ve sağlık donatı "
-                            f"kapasiteleri yeterli ({iyi_str}). Kompakt form korunarak '{fallback_cat}' olarak ayrıldı."
+                        gerekce_konut = (
+                            f"Ada #{pf.id()} ({int(poly_area)} m²): Çevre sektörde okul, sağlık ve ibadet donatıları yeterli olup ({iyi_str}), "
+                            f"yürüme mesafesinde ({int(min(d_exist_park, d_new_park))} m) yeterli park/yeşil alan mevcuttur. "
+                            f"Alanın gereksiz yere devasa bir parka boğulması engellenmiş; alan konut ihtiyacı için 'Önerilen Konut Alanı' (~{etki_val} kişi) olarak ayrılmıştır."
                         )
+                        f_konut = QgsFeature(konut_out_lyr.fields())
+                        f_konut.setGeometry(pgeom)
+                        f_konut["kaynak_ada_id"] = pf.id()
+                        f_konut["parca_no"] = 1
+                        f_konut["kullanim_turu"] = "Önerilen Konut Alanı"
+                        f_konut["alan_m2"] = round(poly_area, 1)
+                        f_konut["ongorulen_nufus"] = etki_val
+                        f_konut["yol_erisim_skoru"] = 100.0
+                        f_konut["komsu_donatilar"] = iyi_str
+                        f_konut["planlama_gerekcesi"] = gerekce_konut
+                        f_konut["yazar"] = PLUGIN_AUTHOR
+                        out_konut_features.append(f_konut)
+                        parcel_narrative_list.append(gerekce_konut)
+
+                        v_pt_f = QgsFeature(vac_pts_lyr.fields())
+                        v_pt_f.setGeometry(QgsGeometry.fromPointXY(eval_pt))
+                        v_pt_f["kaynak_ada_id"] = pf.id()
+                        v_pt_f["alan_m2"] = round(poly_area, 1)
+                        v_pt_f["atanan_donatilar"] = "Önerilen Konut Alanı"
+                        vac_pt_features.append(v_pt_f)
+                        continue
                     else:
                         fallback_cat = park_cat
                         etki_val = int(round(poly_area / max(specs[fallback_cat]["std_m2"], 1.0)))
@@ -1860,30 +1969,29 @@ class MPYYDonatiDialog(QDialog):
                             f"Ada #{pf.id()} ({int(poly_area)} m²): Sektör donatı kotaları karşılandığından veya "
                             f"ada formu (rect_fill={block_rect_fill:.2f}) açık yeşil alana uygun olduğundan '{fallback_cat}' olarak ayrıldı."
                         )
+                        f_new = QgsFeature(alloc_lyr.fields())
+                        f_new.setGeometry(pgeom)
+                        f_new["kaynak_ada_id"] = pf.id()
+                        f_new["parca_no"] = 1
+                        f_new["onerilen_donati"] = fallback_cat
+                        f_new["alan_m2"] = round(poly_area, 1)
+                        f_new["hedef_nufus_etki"] = etki_val
+                        f_new["yol_erisim_skoru"] = 100.0
+                        f_new["mevcut_durum_ozeti"] = f"Yeterli: {iyi_str}"
+                        f_new["planlama_aciklama_raporu"] = aciklama
+                        f_new["yazar"] = PLUGIN_AUTHOR
+                        out_alloc_features.append(f_new)
+                        allocated_summary[fallback_cat]["count"] += 1
+                        allocated_summary[fallback_cat]["area"] += poly_area
+                        parcel_narrative_list.append(aciklama)
 
-                    f_new = QgsFeature(alloc_lyr.fields())
-                    f_new.setGeometry(pgeom)
-                    f_new["kaynak_ada_id"] = pf.id()
-                    f_new["parca_no"] = 1
-                    f_new["onerilen_donati"] = fallback_cat
-                    f_new["alan_m2"] = round(poly_area, 1)
-                    f_new["hedef_nufus_etki"] = etki_val
-                    f_new["yol_erisim_skoru"] = 100.0
-                    f_new["mevcut_durum_ozeti"] = f"Yeterli: {iyi_str}"
-                    f_new["planlama_aciklama_raporu"] = aciklama
-                    f_new["yazar"] = PLUGIN_AUTHOR
-                    out_alloc_features.append(f_new)
-                    allocated_summary[fallback_cat]["count"] += 1
-                    allocated_summary[fallback_cat]["area"] += poly_area
-                    parcel_narrative_list.append(aciklama)
-
-                    v_pt_f = QgsFeature(vac_pts_lyr.fields())
-                    v_pt_f.setGeometry(QgsGeometry.fromPointXY(eval_pt))
-                    v_pt_f["kaynak_ada_id"] = pf.id()
-                    v_pt_f["alan_m2"] = round(poly_area, 1)
-                    v_pt_f["atanan_donatilar"] = fallback_cat
-                    vac_pt_features.append(v_pt_f)
-                    continue
+                        v_pt_f = QgsFeature(vac_pts_lyr.fields())
+                        v_pt_f.setGeometry(QgsGeometry.fromPointXY(eval_pt))
+                        v_pt_f["kaynak_ada_id"] = pf.id()
+                        v_pt_f["alan_m2"] = round(poly_area, 1)
+                        v_pt_f["atanan_donatilar"] = fallback_cat
+                        vac_pt_features.append(v_pt_f)
+                        continue
 
                 # CASE C: Multi-Use Urban Block Subdivision (1 or 2 Built Facilities + Park Buffer + Optional Passive Green Strip)
                 primary = aday_donatilar[0]
@@ -1964,11 +2072,25 @@ class MPYYDonatiDialog(QDialog):
                         non_mpyy_summary["pasif_yesil"]["count"] += 1
                         non_mpyy_summary["pasif_yesil"]["area"] += pas_area
 
+                    # Check if the park remainder is large and nearby park is adequate:
+                    # Carve a modest park buffer around the facility and allocate the large remainder to Housing!
+                    park_part_geom = multi_res["park"]
+                    housing_part_geom = None
+                    if park_part_geom is not None and not park_part_geom.isEmpty():
+                        p_rem_area = park_part_geom.area()
+                        if (nearby_park_adequate and p_rem_area >= 3200.0) or p_rem_area >= 5000.0:
+                            park_buf_m2 = min(2200.0, max(1200.0, p_rem_area * 0.18))
+                            house_rem_m2 = p_rem_area - park_buf_m2
+                            spl_park = split_polygon_by_ratios(park_part_geom, [park_buf_m2, house_rem_m2], is_built_flags=[False, True])
+                            if len(spl_park) >= 2:
+                                park_part_geom = spl_park[0]
+                                housing_part_geom = spl_park[1]
+
                     alloc_parts = []
                     if multi_res["built1"] is not None and not multi_res["built1"].isEmpty():
                         alloc_parts.append((p_cat, multi_res["built1"], primary.get("relief_target")))
-                    if multi_res["park"] is not None and not multi_res["park"].isEmpty():
-                        alloc_parts.append((park_cat, multi_res["park"], None))
+                    if park_part_geom is not None and not park_part_geom.isEmpty():
+                        alloc_parts.append((park_cat, park_part_geom, None))
                     if secondary is not None and multi_res["built2"] is not None and not multi_res["built2"].isEmpty():
                         alloc_parts.append((secondary["cat"], multi_res["built2"], secondary.get("relief_target")))
 
@@ -2029,13 +2151,38 @@ class MPYYDonatiDialog(QDialog):
                         if s_cat != park_cat:
                             all_newly_placed_built_pts.append(s_pt)
 
+                    if housing_part_geom is not None and not housing_part_geom.isEmpty():
+                        h_area = housing_part_geom.area()
+                        h_pop = int(round(h_area / 35.0))
+                        gerekce_h = (
+                            f"Ada #{pf.id()}: {int(p_sp.get('min_area', 5000))} m² '{p_cat}' ve {int(park_buf_m2)} m² yeşil tampon "
+                            f"ayrıldıktan sonra kalan {int(h_area)} m² geniş alan; yakın çevrede halihazırda yeterli büyüklükte park bulunduğundan "
+                            f"adanın gereksiz yere devasa yeşile boğulması engellenerek 'Önerilen Konut Alanı' (~{h_pop} kişi) olarak ayrılmıştır."
+                        )
+                        f_kh = QgsFeature(konut_out_lyr.fields())
+                        f_kh.setGeometry(housing_part_geom)
+                        f_kh["kaynak_ada_id"] = pf.id()
+                        f_kh["parca_no"] = 9
+                        f_kh["kullanim_turu"] = "Önerilen Konut Alanı"
+                        f_kh["alan_m2"] = round(h_area, 1)
+                        f_kh["ongorulen_nufus"] = h_pop
+                        f_kh["yol_erisim_skoru"] = 100.0
+                        f_kh["komsu_donatilar"] = f"Bitişik Donatılar ({p_cat})"
+                        f_kh["planlama_gerekcesi"] = gerekce_h
+                        f_kh["yazar"] = PLUGIN_AUTHOR
+                        out_konut_features.append(f_kh)
+                        parcel_narrative_list.append(gerekce_h)
+
                     parcel_narrative_list.append(ortak_aciklama)
 
                     v_pt_f = QgsFeature(vac_pts_lyr.fields())
                     v_pt_f.setGeometry(QgsGeometry.fromPointXY(eval_pt))
                     v_pt_f["kaynak_ada_id"] = pf.id()
                     v_pt_f["alan_m2"] = round(poly_area, 1)
-                    v_pt_f["atanan_donatilar"] = " + ".join(c for c, _, _ in alloc_parts)
+                    atanan_str = " + ".join(c for c, _, _ in alloc_parts)
+                    if housing_part_geom is not None:
+                        atanan_str += " + Önerilen Konut Alanı"
+                    v_pt_f["atanan_donatilar"] = atanan_str
                     vac_pt_features.append(v_pt_f)
                 else:
                     if block_rect_fill < 0.70:
@@ -2057,6 +2204,91 @@ class MPYYDonatiDialog(QDialog):
                         allocated_summary[park_cat]["count"] += 1
                         allocated_summary[park_cat]["area"] += poly_area
                         continue
+
+                    # If compact facility (ibadet or asm, min_area <= 2500 m2) on a large block (>= 5500 m2):
+                    # Do NOT turn the entire 15,000-30,000 m2 into a giant facility or giant park!
+                    # Allocate compact facility lot + buffer, and designate the remaining majority as Önerilen Konut Alanı!
+                    if (p_sp["key_id"] in ("ibadet", "asm") or p_sp.get("min_area", 2500.0) <= 2500.0) and poly_area >= 5500.0:
+                        facility_lot_m2 = min(p_sp.get("max_single", 3000.0), max(p_sp.get("min_area", 2500.0), 2500.0))
+                        park_buf_m2 = min(2000.0, max(1200.0, poly_area * 0.12))
+                        house_rem_m2 = poly_area - facility_lot_m2 - park_buf_m2
+                        spl_parts = split_polygon_by_ratios(pgeom, [facility_lot_m2, park_buf_m2, house_rem_m2], is_built_flags=[True, False, True])
+                        if len(spl_parts) >= 3:
+                            fac_geom, pbuf_geom, h_geom = spl_parts[0], spl_parts[1], spl_parts[2]
+                            # 1. Facility
+                            f_fac = QgsFeature(alloc_lyr.fields())
+                            f_fac.setGeometry(fac_geom)
+                            f_fac["kaynak_ada_id"] = pf.id()
+                            f_fac["parca_no"] = 1
+                            f_fac["onerilen_donati"] = p_cat
+                            f_fac["alan_m2"] = round(fac_geom.area(), 1)
+                            f_fac["hedef_nufus_etki"] = int(p_sp["unit_cap"])
+                            f_fac["yol_erisim_skoru"] = round(primary["score"], 1)
+                            f_fac["mevcut_durum_ozeti"] = f"Mevcut: {iyi_str}"
+                            f_fac["planlama_aciklama_raporu"] = (
+                                f"Ada #{pf.id()}: '{p_cat}' ihtiyacı ({int(fac_geom.area())} m²) kompakt parselle karşılanmış; "
+                                f"kocaman adanın gereksiz yeşile boğulması engellenerek kalan alan konuta ayrılmıştır."
+                            )
+                            f_fac["yazar"] = PLUGIN_AUTHOR
+                            out_alloc_features.append(f_fac)
+                            allocated_summary[p_cat]["count"] += 1
+                            allocated_summary[p_cat]["area"] += fac_geom.area()
+
+                            # 2. Park buffer
+                            f_pb = QgsFeature(alloc_lyr.fields())
+                            f_pb.setGeometry(pbuf_geom)
+                            f_pb["kaynak_ada_id"] = pf.id()
+                            f_pb["parca_no"] = 2
+                            f_pb["onerilen_donati"] = park_cat
+                            f_pb["alan_m2"] = round(pbuf_geom.area(), 1)
+                            f_pb["hedef_nufus_etki"] = int(round(pbuf_geom.area() / 10.0))
+                            f_pb["yol_erisim_skoru"] = 100.0
+                            f_pb["mevcut_durum_ozeti"] = "Donatı Tampon Yeşili"
+                            f_pb["planlama_aciklama_raporu"] = (
+                                f"Ada #{pf.id()}: '{p_cat}' çevresinde {int(pbuf_geom.area())} m² yeşil tampon ayrılmıştır."
+                            )
+                            f_pb["yazar"] = PLUGIN_AUTHOR
+                            out_alloc_features.append(f_pb)
+                            allocated_summary[park_cat]["count"] += 1
+                            allocated_summary[park_cat]["area"] += pbuf_geom.area()
+
+                            # 3. Remaining Housing
+                            h_pop = int(round(h_geom.area() / 35.0))
+                            gerekce_h = (
+                                f"Ada #{pf.id()} ({int(poly_area)} m²): '{p_cat}' ({int(fac_geom.area())} m²) ve "
+                                f"{int(pbuf_geom.area())} m² tampon park ayrıldıktan sonra kalan {int(h_geom.area())} m² büyük alan; "
+                                f"kocaman adanın gereksiz yeşile boğulması engellenerek 'Önerilen Konut Alanı' (~{h_pop} kişi) olarak planlanmıştır."
+                            )
+                            f_kh = QgsFeature(konut_out_lyr.fields())
+                            f_kh.setGeometry(h_geom)
+                            f_kh["kaynak_ada_id"] = pf.id()
+                            f_kh["parca_no"] = 3
+                            f_kh["kullanim_turu"] = "Önerilen Konut Alanı"
+                            f_kh["alan_m2"] = round(h_geom.area(), 1)
+                            f_kh["ongorulen_nufus"] = h_pop
+                            f_kh["yol_erisim_skoru"] = 100.0
+                            f_kh["komsu_donatilar"] = f"Bitişik Donatılar ({p_cat})"
+                            f_kh["planlama_gerekcesi"] = gerekce_h
+                            f_kh["yazar"] = PLUGIN_AUTHOR
+                            out_konut_features.append(f_kh)
+                            parcel_narrative_list.append(gerekce_h)
+
+                            fac_pt = fac_geom.centroid().asPoint()
+                            fac_nid, fac_snap = graph.snap_polygon_to_node(fac_geom)
+                            self._register_placed_facility(
+                                p_cat, fac_pt, fac_nid, fac_snap, vac_dist_map, p_sp["net_r"],
+                                int(p_sp["unit_cap"]), fac_geom.area(), newly_placed_points, existing_cap_by_type,
+                                remaining_deficit_pop, unserved_res_nodes, allocated_summary,
+                            )
+                            all_newly_placed_built_pts.append(fac_pt)
+
+                            v_pt_f = QgsFeature(vac_pts_lyr.fields())
+                            v_pt_f.setGeometry(QgsGeometry.fromPointXY(eval_pt))
+                            v_pt_f["kaynak_ada_id"] = pf.id()
+                            v_pt_f["alan_m2"] = round(poly_area, 1)
+                            v_pt_f["atanan_donatilar"] = f"{p_cat} + Tampon Park + Önerilen Konut Alanı"
+                            vac_pt_features.append(v_pt_f)
+                            continue
 
                     etki_nufus = int(max(primary["newly_covered_pop"], p_sp["unit_cap"]))
                     rt = primary.get("relief_target")
@@ -2100,6 +2332,8 @@ class MPYYDonatiDialog(QDialog):
 
             alloc_pr.addFeatures(out_alloc_features)
             alloc_lyr.updateExtents()
+            konut_out_pr.addFeatures(out_konut_features)
+            konut_out_lyr.updateExtents()
             passive_pr.addFeatures(out_passive_features)
             passive_lyr.updateExtents()
             comm_out_pr.addFeatures(out_comm_features)
@@ -2234,7 +2468,7 @@ class MPYYDonatiDialog(QDialog):
                 except Exception:
                     pass
 
-            layers_to_tag = [alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr]
+            layers_to_tag = [alloc_lyr, konut_out_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr]
             if res_growth_lyr is not None:
                 layers_to_tag.append(res_growth_lyr)
             if stoch_alloc_lyr is not None:
@@ -2243,10 +2477,11 @@ class MPYYDonatiDialog(QDialog):
                 lyr_obj.setAbstract(f"Generated by MPYY Urban Facility Optimization Plugin — Author: {PLUGIN_AUTHOR}")
 
             self.apply_polygon_symbology(alloc_lyr, specs)
+            self.apply_konut_symbology(konut_out_lyr)
             self.apply_non_mpyy_symbology(passive_lyr, comm_out_lyr)
 
             self._add_layers_to_grouped_tree(
-                alloc_lyr, passive_lyr, comm_out_lyr,
+                alloc_lyr, konut_out_lyr, passive_lyr, comm_out_lyr,
                 res_out_lyr, fac_pts_lyr, vac_pts_lyr,
                 res_growth_lyr=res_growth_lyr,
                 stoch_alloc_lyr=stoch_alloc_lyr,
@@ -2293,47 +2528,77 @@ class MPYYDonatiDialog(QDialog):
                         node_entry[4] = True
 
     def _add_layers_to_grouped_tree(
-        self, alloc_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr,
+        self, alloc_lyr, konut_out_lyr, passive_lyr, comm_out_lyr, res_out_lyr, fac_pts_lyr, vac_pts_lyr,
         res_growth_lyr=None, stoch_alloc_lyr=None
     ):
         proj = QgsProject.instance()
         root = proj.layerTreeRoot()
 
         grp_mpyy_name = "MPYY_EK2_Sosyal_ve_Teknik_Donati_Alanlari"
+        grp_konut_name = "MPYY_Onerilen_Konut_Alanlari"
         grp_non_mpyy_name = "MPYY_Disi_Tamamlayici_Alanlar (Pasif Yesil & Ticari Demo)"
 
         # Clean up previous groups of the same name to prevent duplicate clutter
-        for gname in (grp_mpyy_name, grp_non_mpyy_name):
+        for gname in (grp_mpyy_name, grp_konut_name, grp_non_mpyy_name):
             old_grp = root.findGroup(gname)
             if old_grp is not None:
                 root.removeChildNode(old_grp)
 
         grp_mpyy = root.insertGroup(0, grp_mpyy_name)
-        grp_non_mpyy = root.insertGroup(1, grp_non_mpyy_name)
+        grp_konut = root.insertGroup(1, grp_konut_name)
+        grp_non_mpyy = root.insertGroup(2, grp_non_mpyy_name)
 
-        proj.addMapLayer(alloc_lyr, False)
-        grp_mpyy.addLayer(alloc_lyr)
+        # 1. MPYY Amenity Group (checks chk_out_donati and chk_out_stochastic)
+        if self.chk_out_donati.isChecked() and alloc_lyr is not None and alloc_lyr.featureCount() > 0:
+            proj.addMapLayer(alloc_lyr, False)
+            grp_mpyy.addLayer(alloc_lyr)
 
-        if stoch_alloc_lyr is not None and stoch_alloc_lyr.featureCount() > 0:
+        if self.chk_out_stochastic.isChecked() and stoch_alloc_lyr is not None and stoch_alloc_lyr.featureCount() > 0:
             proj.addMapLayer(stoch_alloc_lyr, False)
             grp_mpyy.addLayer(stoch_alloc_lyr)
-
-        if res_growth_lyr is not None and res_growth_lyr.featureCount() > 0:
-            proj.addMapLayer(res_growth_lyr, False)
-            grp_mpyy.addLayer(res_growth_lyr)
 
         if self.chk_show_centroids.isChecked():
             for c_lyr in (res_out_lyr, fac_pts_lyr, vac_pts_lyr):
                 proj.addMapLayer(c_lyr, False)
                 grp_mpyy.addLayer(c_lyr)
 
-        if passive_lyr.featureCount() > 0:
+        # 2. Housing Group (checks chk_out_konut and chk_out_res_growth)
+        if self.chk_out_konut.isChecked() and konut_out_lyr is not None and konut_out_lyr.featureCount() > 0:
+            proj.addMapLayer(konut_out_lyr, False)
+            grp_konut.addLayer(konut_out_lyr)
+
+        if self.chk_out_res_growth.isChecked() and res_growth_lyr is not None and res_growth_lyr.featureCount() > 0:
+            proj.addMapLayer(res_growth_lyr, False)
+            grp_konut.addLayer(res_growth_lyr)
+
+        # 3. Non-MPYY Complementary Group (checks chk_out_passive and chk_out_comm)
+        if self.chk_out_passive.isChecked() and passive_lyr is not None and passive_lyr.featureCount() > 0:
             proj.addMapLayer(passive_lyr, False)
             grp_non_mpyy.addLayer(passive_lyr)
 
-        if comm_out_lyr.featureCount() > 0:
+        if self.chk_out_comm.isChecked() and comm_out_lyr is not None and comm_out_lyr.featureCount() > 0:
             proj.addMapLayer(comm_out_lyr, False)
             grp_non_mpyy.addLayer(comm_out_lyr)
+
+        # Remove empty groups if no layers were added
+        for grp in (grp_non_mpyy, grp_konut, grp_mpyy):
+            if len(grp.children()) == 0:
+                root.removeChildNode(grp)
+
+    def apply_konut_symbology(self, layer):
+        sym = QgsFillSymbol.createSimple({
+            "color": "#facc15",
+            "outline_color": "#ca8a04",
+            "outline_width": "0.75",
+            "style": "solid",
+        })
+        sym.setOpacity(0.85)
+        renderer = QgsCategorizedSymbolRenderer(
+            "kullanim_turu",
+            [QgsRendererCategory("Önerilen Konut Alanı", sym, "Önerilen Konut Alanı")]
+        )
+        layer.setRenderer(renderer)
+        layer.triggerRepaint()
 
     def apply_stochastic_allocation_symbology(self, layer):
         cats = [
@@ -2381,7 +2646,7 @@ class MPYYDonatiDialog(QDialog):
         used_names = set()
         for feat in layer.getFeatures():
             val = feat["onerilen_donati"]
-            if val and val not in used_names:
+            if val and val not in used_names and "konut" not in val.lower():
                 used_names.add(val)
                 col_hex = specs[val]["color"] if val in specs else "#334155"
                 sym = QgsFillSymbol.createSimple({

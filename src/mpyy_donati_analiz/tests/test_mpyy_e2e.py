@@ -237,6 +237,8 @@ class TestMPYYDonatiAnalizE2E(unittest.TestCase):
         dlg.run_full_analysis(show_msg=False)
         growth_layers = QgsProject.instance().mapLayersByName("Onerilen_Gelisme_Konut_Alanlari")
         self.assertEqual(len(growth_layers), 1)
+        konut_layers = QgsProject.instance().mapLayersByName("Onerilen_Konut_Adalari")
+        self.assertEqual(len(konut_layers), 1)
         self.assertIn("Gelişme Konut Alanı", dlg.txt_report.toHtml())
 
         dlg.close()

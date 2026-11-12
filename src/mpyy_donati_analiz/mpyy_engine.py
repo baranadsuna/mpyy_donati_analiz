@@ -1630,6 +1630,18 @@ class AdaptiveAmenityWeightingEngine:
                 w_sum = sum(item[1]["nufus"] * item[1]["ihtiyac_agirligi"].get(cat, 0.0) for item in neighborhood_blocks)
                 agg_weights[cat] = round(w_sum / tot_n_pop, 3)
 
+            # Check nearby park proximity: if a major park exists or was placed within 450m,
+            # zero out park deficit so vacant parcels are not redundantly turned into giant parks!
+            d_park_near = float('inf')
+            for p_cat_cand, p_items in dyn_facilities.items():
+                if any(k in p_cat_cand.lower() for k in ("park", "yesil", "yeşil")):
+                    for p_item in p_items:
+                        d_park_near = min(d_park_near, math.hypot(cpt.x() - p_item[1].x(), cpt.y() - p_item[1].y()))
+            if d_park_near <= 450.0:
+                for p_key in list(agg_weights.keys()):
+                    if any(k in p_key.lower() for k in ("park", "yesil", "yeşil")):
+                        agg_weights[p_key] = 0.0
+
             # Overall neighborhood satisfaction
             if agg_weights:
                 max_deficit_cat = max(agg_weights.keys(), key=lambda c: agg_weights[c])
@@ -1644,11 +1656,73 @@ class AdaptiveAmenityWeightingEngine:
 
             # 3. Decision Gate: Amenity vs Residential Growth
             if max_deficit_val >= satisfaction_threshold:
-                # ALLOCATE AS DONATI
                 assigned_cat = max_deficit_cat
                 sp = specs.get(assigned_cat, {})
                 unit_cap = sp.get("unit_cap", 2500)
+                sp_key = sp.get("key_id", "").lower()
 
+                # If assigning a compact facility (like İbadet or ASM, <= 2500 m2) on a LARGE block (>= 5500 m2):
+                # Do NOT turn the entire 15,000-30,000 m2 into a giant facility or giant park!
+                # Allocate compact facility lot + buffer, and designate the remaining majority as GELİŞME KONUT ALANI!
+                if (sp_key in ("ibadet", "asm") or sp.get("min_area", 2500.0) <= 2500.0) and area_m2 >= 5500.0:
+                    facility_lot_m2 = min(sp.get("max_single", 3000.0), max(sp.get("min_area", 2500.0), 2500.0))
+                    park_buf_m2 = min(2000.0, max(1200.0, area_m2 * 0.12))
+                    housing_rem_m2 = area_m2 - facility_lot_m2 - park_buf_m2
+                    prospective_housing_pop = int(round((housing_rem_m2 / 10000.0) * gross_density_pop_per_ha))
+
+                    # 1. Facility allocation
+                    allocations.append({
+                        "geom": geom,
+                        "ada_id": fid,
+                        "alan_m2": round(facility_lot_m2 + park_buf_m2, 1),
+                        "karar_turu": f"Kompakt Donatı ({assigned_cat} + Tampon Yeşil)",
+                        "atanan_kullanim": assigned_cat,
+                        "kod": "DONATI_ONERISI",
+                        "ongorulen_nufus": 0,
+                        "ihtiyac_agirliklari": agg_weights,
+                        "en_yuksek_acik": f"{assigned_cat} (%{int(max_deficit_val * 100)})",
+                        "donati_yeterlilik_yuzdesi": avg_neighborhood_satisfaction,
+                        "feedback_durumu": "Donatı İhtiyacı Karşılandı",
+                        "planlama_gerekcesi": (
+                            f"Ada #{fid} ({int(area_m2)} m²): '{assigned_cat}' ihtiyacı ({int(facility_lot_m2)} m² "
+                            f"+ {int(park_buf_m2)} m² tampon park) kompakt parselle karşılanmış; "
+                            f"kocaman adanın gereksiz yeşile boğulması engellenerek kalan alan konuta ayrılmıştır."
+                        ),
+                        "stokastik_sira": step_idx + 1,
+                    })
+
+                    # 2. Remaining housing allocation with feedback simulation
+                    allocations.append({
+                        "geom": geom,
+                        "ada_id": fid,
+                        "alan_m2": round(housing_rem_m2, 1),
+                        "karar_turu": "Öncelikli Gelişme Konut Alanı (Kapasite & Denge Onaylı)",
+                        "atanan_kullanim": "Gelişme Konut Alanı",
+                        "kod": "ONCELIKLI_KONUT_DENGE_OK",
+                        "ongorulen_nufus": prospective_housing_pop,
+                        "ihtiyac_agirliklari": agg_weights,
+                        "en_yuksek_acik": f"{assigned_cat} (%{int(max_deficit_val * 100)})",
+                        "donati_yeterlilik_yuzdesi": avg_neighborhood_satisfaction,
+                        "feedback_durumu": "Kapasite & Denge Onaylandı (OK)",
+                        "planlama_gerekcesi": (
+                            f"Ada #{fid}: Donatı ayrıldıktan sonra kalan {int(housing_rem_m2)} m² büyük alan, "
+                            f"mahalledeki donatılardan doğrudan yaya erişimi alan ~{prospective_housing_pop} kişilik "
+                            f"'Gelişme Konut Alanı' olarak planlanmıştır."
+                        ),
+                        "stokastik_sira": step_idx + 1,
+                    })
+
+                    # Relieve surrounding residential blocks
+                    for r_id, prof, _ in neighborhood_blocks:
+                        cur_w = prof["ihtiyac_agirligi"].get(assigned_cat, 0.0)
+                        prof["ihtiyac_agirligi"][assigned_cat] = max(0.0, round(cur_w - 0.45, 3))
+                        cur_s = prof["mevcut_m2_kisi"].get(assigned_cat, 0.0)
+                        prof["mevcut_m2_kisi"][assigned_cat] = round(cur_s + (facility_lot_m2 / max(tot_n_pop, 1.0)), 2)
+
+                    dyn_facilities.setdefault(assigned_cat, []).append([fid, cpt, unit_cap, facility_lot_m2, 0.0])
+                    continue
+
+                # Standard full-lot built facility (e.g. İlkokul, Ortaokul)
                 justification = (
                     f"Ada #{fid} ({int(area_m2)} m²): Çevre konut adalarında '{assigned_cat}' kişi başı açık "
                     f"ihtiyaç ağırlığı %{int(max_deficit_val * 100)} ile en yüksek seviyededir "
@@ -1656,7 +1730,6 @@ class AdaptiveAmenityWeightingEngine:
                     f"Stokastik ihtiyaç modeli gereğince bu boş parsel öncelikli olarak '{assigned_cat}' tahsisine ayrılmıştır."
                 )
 
-                # Dynamically relieve surrounding residential blocks for this category
                 added_cap = min(unit_cap, area_m2 / max(sp.get("std_m2", 2.0), 0.5))
                 for r_id, prof, _ in neighborhood_blocks:
                     cur_w = prof["ihtiyac_agirligi"].get(assigned_cat, 0.0)
