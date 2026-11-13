@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>mpyy_donati_analiz (v2.0.0) — Academic Methodology &amp; GUI Guide</title>
+  <title>mpyy_donati_analiz (v2.1.0) — Academic Methodology &amp; GUI Guide</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"
@@ -85,14 +85,14 @@
 <header>
   <div class="container">
     <div class="badge-row">
-      <span class="badge">Plugin: mpyy_donati_analiz v2.0.0</span>
+      <span class="badge">Plugin: mpyy_donati_analiz v2.1.0</span>
       <span class="badge crs">Standard CRS: EPSG:5253 (TUREF / TM30)</span>
       <span class="badge">QGIS 3.x &amp; 4.x (supportsQt6=True)</span>
       <span class="badge">Multi-Language UI: EN (Default) • TR • ZH • ES</span>
     </div>
     <h1>MPYY Urban Facility Accessibility &amp; Spatial Optimization</h1>
     <p style="max-width:880px; color:#cbd5e1; margin:0;">
-      Academic methodology and operational guide for prepared road-network graph construction (<code>FastRoadGraph</code>), multi-source Dijkstra service catchment modeling, MPYY Annex-2 standard deficit analysis, and 12-step recursive binary parcel splitting.
+      Academic methodology and operational guide for prepared road-network graph construction (<code>FastRoadGraph</code>), multi-source Dijkstra p-location catchments, stochastic per-block amenity deficit weighting, compact multi-use orthogonal block splitting, Plan vs. Actual Use audit, and unified residential development scoring.
     </p>
   </div>
 </header>
@@ -127,15 +127,15 @@
       This dual formulation explicitly isolates <strong>Barrier-Severed Blocks</strong> (<code>BIRD OK / NO ROAD ACCESS</code>) where $d_{\text{euclid}}(r_i, k) \le R_{\text{euclid},k}$ but $d_{\text{road}}(r_i, k) &gt; R_{\text{net},k}$ due to missing street connectivity or physical barriers.
     </p>
 
-    <h3>1.3 Two-Dimension Deficit &amp; Graph-Median Allocation Scoring (<code>mpyy_dialog.py :: run_full_analysis</code>)</h3>
+    <h3>1.3 Core Stochastic Deficit Weighting &amp; Equilibrium Scoring (<code>AdaptiveAmenityWeightingEngine</code>)</h3>
     <p>
-      Combining supply-to-demand capacity modeling from <strong>Luo &amp; Wang (2003)</strong> (<a href="https://doi.org/10.1068/b29120">DOI: 10.1068/b29120</a>) with graph-median location optimization from <strong>Hakimi (1964)</strong> (<a href="https://doi.org/10.1287/opre.12.3.450">DOI: 10.1287/opre.12.3.450</a>), each candidate vacant parcel $v$ with area $A_v \ge A_{\min,k}$ is evaluated by computing the unserved residential population $P_{\text{newly\_covered}}(v, k)$ reachable within road distance $R_{\text{net},k}$ from $v$, combined with remaining city-wide capacity deficit $D_{\text{pop}}(k) = \max(P_{\text{unserved},k},\, P_{\text{total}} - C_{\text{existing},k})$:
+      Combining supply-to-demand capacity modeling from <strong>Luo &amp; Wang (2003)</strong> (<a href="https://doi.org/10.1068/b29120">DOI: 10.1068/b29120</a>), E2SFCA catchment decay from <strong>Luo &amp; Qi (2009)</strong> (<a href="https://doi.org/10.1016/j.healthplace.2009.06.002">DOI: 10.1016/j.healthplace.2009.06.002</a>), and graph-median location optimization from <strong>Hakimi (1964)</strong> (<a href="https://doi.org/10.1287/opre.12.3.450">DOI: 10.1287/opre.12.3.450</a>), residential blocks are traversed in seeded stochastic order to compute normalized deficit weights against MPYY Annex-2 standards $T_k$:
     </p>
     <div class="math-block">
-      $$\text{Score}(v, k) = \frac{2.2 \cdot P_{\text{newly\_covered}}(v, k) + 0.6 \cdot D_{\text{pop}}(k)}{1.0 + 0.45 \cdot N_{\text{allocated}}(k)}$$
+      $$W_{i,k} = \max\!\left(0,\; \min\!\left(1,\; \frac{T_k - s_{i,k}}{T_k}\right)\right), \qquad \text{Score}(v, k) = \frac{\left(2.4 \cdot P_{\text{newly\_covered}}(v, k) + 0.45 \cdot D_{\text{pop}}(k)\right) \cdot \left(1.0 + 1.15\,\bar{W}_k(v)\right) \cdot \text{Scale}(A_v, k)}{1.0 + 0.70 \cdot N_{\text{allocated}}(k)}$$
     </div>
     <p>
-      <strong>Surplus Facility Safeguard:</strong> When all facility deficits are satisfied ($\sum_k D_{\text{pop}}(k) \le 500$ persons), the engine prevents redundant institutional clustering and assigns vacant urban parcels ($A_v \ge 1200\text{ m}^2$) to <strong>Residential Development Area</strong> (or <strong>Park &amp; Green Space</strong>).
+      <strong>Park Proximity &amp; Housing Preservation Safeguard:</strong> Neighboring parks within $450\text{ m}$ zero out local park deficit weights ($\bar{W}_{\text{park}}(v) \leftarrow 0$) to prevent creating redundant oversized parks. Compact facilities (Kindergarten, Family Health Center, Place of Worship) reserve compact parcels plus a green buffer while releasing surplus area to unified <strong>Proposed Residential Development Blocks</strong> (<code>Onerilen_Konut_Adalari</code>) evaluated for pedestrian walkability ($S_{\text{res}} \in [0, 100]$) and carrying-capacity feedback ($C_{\text{safe}}$).
     </p>
 
     <h3>1.4 12-Step Recursive Binary Polygon Subdivision (<code>mpyy_engine.py :: split_polygon_by_ratios</code>)</h3>
@@ -224,8 +224,8 @@
       </tr>
       <tr>
         <td><code>park</code></td>
-        <td>Park &amp; Playground (10 m³/cap)</td>
-        <td>Çocuk Bahçesi &amp; Park (EK-2: 10 m³/kişi)</td>
+        <td>Park &amp; Playground (10 m²/cap)</td>
+        <td>Çocuk Bahçesi &amp; Park (EK-2: 10 m²/kişi)</td>
         <td>500 m / 500 m</td>
         <td>10.00 m²/cap</td>
         <td>1,000 m²</td>
@@ -233,14 +233,14 @@
         <td>3,000 pers</td>
       </tr>
       <tr>
-        <td><code>konut</code></td>
-        <td>Residential Development Area</td>
-        <td>Gelişme Konut Alanı (Rezerv Yapı)</td>
-        <td>1,000 m / 1,000 m</td>
-        <td>0.00 m²/cap</td>
-        <td>1,000 m²</td>
-        <td>30,000 m²</td>
-        <td>4,000 pers</td>
+        <td><code>anaokulu</code></td>
+        <td>Kindergarten / Nursery (1500-2000 m²)</td>
+        <td>Anaokulu / Kreş (EK-2: 1500-2000 m²)</td>
+        <td>500 m / 500 m</td>
+        <td>0.50 m²/cap</td>
+        <td>1,500 m²</td>
+        <td>2,500 m²</td>
+        <td>1,500 pers</td>
       </tr>
       <tr>
         <td><code>sosyal</code></td>
@@ -258,15 +258,21 @@
   <h2>3. Step-by-Step GUI Workflow (Real PyQGIS Captures)</h2>
   <div class="screenshot-grid">
     <figure>
-      <img src="assets/gui_step1_en_table.png" alt="MPYY Donati Analiz Step 1 English Default Table UI" />
+      <img src="assets/gui_step1_en_table.png" alt="MPYY Donati Analiz v2.1.0 English Default Input and Standards UI" />
       <figcaption>
-        <strong>Stage 1 — English Default Interface &amp; Editable Annex-2 Matrix:</strong> Selecting the Prepared Network (Road Graph), Existing Residential Blocks, and Vacant Parcels in <code>MPYYDonatiDialog</code>, with 4-language switcher (<code>EN</code>, <code>TR</code>, <code>ZH</code>, <code>ES</code>) and sample polygon generator in <code>EPSG:5253</code>.
+        <strong>Stage 1 — English Default Interface &amp; Editable Annex-2 Matrix:</strong> Unclipped TabBar headers, mandatory core E2SFCA deficit-weighted network engine, single residential suitability toggle, and Annex-2 norms (incl. <code>anaokulu</code>) with 4-language switcher (<code>EN</code>, <code>TR</code>, <code>ZH</code>, <code>ES</code>) in <code>EPSG:5253</code>.
       </figcaption>
     </figure>
     <figure>
-      <img src="assets/gui_step2_report_tab.png" alt="MPYY Donati Analiz Step 2 Planning &amp; Accessibility Report Tab" />
+      <img src="assets/gui_step1_tr_clean.png" alt="MPYY Donati Analiz v2.1.0 Turkish Clean Output Controls" />
       <figcaption>
-        <strong>Stage 2 — Detailed Accessibility &amp; Parcel Subdivision Report:</strong> Inspecting Euclidean vs. Road-Network service gaps (<code>Bird OK / Road FAIL</code>), newly allocated compact facility parcels, and per-parcel subdivision narratives.
+        <strong>Stage 2 — Turkish Mode &amp; Streamlined Layer Controls:</strong> Clean unclipped Turkish layout showing <code>anaokulu</code> norms and exactly 4 map visibility checkboxes (<code>chk_out_donati</code>, <code>chk_out_konut</code>, <code>chk_out_passive_green</code>, <code>chk_out_ticari</code>).
+      </figcaption>
+    </figure>
+    <figure>
+      <img src="assets/gui_step2_report_tab.png" alt="MPYY Donati Analiz v2.1.0 Step 3 Planning &amp; Accessibility Report Tab" />
+      <figcaption>
+        <strong>Stage 3 — Planning Decision &amp; Accessibility Report:</strong> Inspecting Euclidean vs. Road-Network service gaps (<code>Bird OK / Road FAIL</code>), network capacity load (<code>D<sub>j</sub> / C<sub>j</sub></code>), newly allocated compact facility parcels, and isolated <code>Onerilen_Konut_Adalari</code> suitability.
       </figcaption>
     </figure>
   </div>
@@ -292,13 +298,19 @@
         <td><strong>Luo, W. &amp; Wang, F.</strong> (2003)</td>
         <td><em>Measures of Spatial Accessibility to Health Care in a GIS Environment: Synthesis and a Case Study in the Chicago Region</em>, Environment and Planning B, 30(6), 865–884.</td>
         <td><a href="https://doi.org/10.1068/b29120" target="_blank" rel="noopener">10.1068/b29120</a></td>
-        <td>Two-step supply capacity vs. population demand deficit synthesis</td>
+        <td>Two-step supply capacity vs. population demand (<code>D<sub>j</sub> / C<sub>j</sub></code>) load modeling</td>
+      </tr>
+      <tr>
+        <td><strong>Luo, W. &amp; Qi, Y.</strong> (2009)</td>
+        <td><em>An enhanced two-step floating catchment area (E2SFCA) method for measuring spatial accessibility to primary care physicians</em>, Health &amp; Place, 15(4), 1100–1107.</td>
+        <td><a href="https://doi.org/10.1016/j.healthplace.2009.06.002" target="_blank" rel="noopener">10.1016/j.healthplace.2009.06.002</a></td>
+        <td>Distance-decay travel-time catchment weighting and neighborhood deficit priority scoring</td>
       </tr>
       <tr>
         <td><strong>Hakimi, S. L.</strong> (1964)</td>
         <td><em>Optimum Locations of Switching Centers and the Absolute Centers and Medians of a Graph</em>, Operations Research, 12(3), 450–459.</td>
         <td><a href="https://doi.org/10.1287/opre.12.3.450" target="_blank" rel="noopener">10.1287/opre.12.3.450</a></td>
-        <td>Graph-median facility location &amp; unserved residential node coverage maximization</td>
+        <td>Graph-median p-location optimization &amp; unserved residential node coverage maximization</td>
       </tr>
     </tbody>
   </table>

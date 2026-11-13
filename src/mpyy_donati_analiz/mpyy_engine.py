@@ -1261,13 +1261,27 @@ class ResidentialGrowthNetworkEvaluator:
             cpt = geom.centroid().asPoint()
             nid, snap_d = graph.snap_polygon_to_node(geom)
 
+            # Lookup helper so category keys work across EN/TR/ZH/ES localized specs or raw key_ids
+            def _lookup_cat_dist(target_key_id, fallback_items):
+                for cname, sp_info in (specs or {}).items():
+                    if sp_info.get("key_id", "").lower() == target_key_id or target_key_id in cname.lower():
+                        items_c = fac_by_type.get(cname, fallback_items)
+                        d_m = net_dist_maps.get(cname, {})
+                        o_m = net_owner_maps.get(cname, {})
+                        return items_c, d_m, o_m
+                return (
+                    fac_by_type.get(target_key_id, fallback_items),
+                    net_dist_maps.get(target_key_id, {}),
+                    net_owner_maps.get(target_key_id, {}),
+                )
+
             # 1. Primary School Distance
-            sch_items = fac_by_type.get("ilkokul", [])
+            sch_items, sch_dmap, sch_omap = _lookup_cat_dist("ilkokul", [])
             d_sch = float('inf')
             sch_overloaded = False
-            if "ilkokul" in net_dist_maps and nid is not None and nid in net_dist_maps["ilkokul"]:
-                d_sch = net_dist_maps["ilkokul"][nid] + snap_d
-                o_idx = net_owner_maps.get("ilkokul", {}).get(nid, -1)
+            if nid is not None and nid in sch_dmap:
+                d_sch = sch_dmap[nid] + snap_d
+                o_idx = sch_omap.get(nid, -1)
                 if 0 <= o_idx < len(sch_items):
                     if sch_items[o_idx][4] > sch_items[o_idx][2] * 1.05:
                         sch_overloaded = True
@@ -1275,20 +1289,20 @@ class ResidentialGrowthNetworkEvaluator:
                 d_sch = min(math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) for it in sch_items) * 1.25
 
             # 2. Middle School Distance
-            mid_items = fac_by_type.get("ortaokul", [])
+            mid_items, mid_dmap, _ = _lookup_cat_dist("ortaokul", [])
             d_mid = float('inf')
-            if "ortaokul" in net_dist_maps and nid is not None and nid in net_dist_maps["ortaokul"]:
-                d_mid = net_dist_maps["ortaokul"][nid] + snap_d
+            if nid is not None and nid in mid_dmap:
+                d_mid = mid_dmap[nid] + snap_d
             elif mid_items:
                 d_mid = min(math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) for it in mid_items) * 1.25
 
             # 3. Family Health Center (ASM) Distance
-            asm_items = fac_by_type.get("asm", [])
+            asm_items, asm_dmap, asm_omap = _lookup_cat_dist("asm", [])
             d_asm = float('inf')
             asm_overloaded = False
-            if "asm" in net_dist_maps and nid is not None and nid in net_dist_maps["asm"]:
-                d_asm = net_dist_maps["asm"][nid] + snap_d
-                o_idx = net_owner_maps.get("asm", {}).get(nid, -1)
+            if nid is not None and nid in asm_dmap:
+                d_asm = asm_dmap[nid] + snap_d
+                o_idx = asm_omap.get(nid, -1)
                 if 0 <= o_idx < len(asm_items):
                     if asm_items[o_idx][4] > asm_items[o_idx][2] * 1.05:
                         asm_overloaded = True
@@ -1296,10 +1310,10 @@ class ResidentialGrowthNetworkEvaluator:
                 d_asm = min(math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) for it in asm_items) * 1.25
 
             # 4. Park Distance
-            park_items = fac_by_type.get("park", [])
+            park_items, park_dmap, _ = _lookup_cat_dist("park", [])
             d_park = float('inf')
-            if "park" in net_dist_maps and nid is not None and nid in net_dist_maps["park"]:
-                d_park = net_dist_maps["park"][nid] + snap_d
+            if nid is not None and nid in park_dmap:
+                d_park = park_dmap[nid] + snap_d
             elif park_items:
                 d_park = min(math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) for it in park_items) * 1.25
 
@@ -1342,7 +1356,7 @@ class ResidentialGrowthNetworkEvaluator:
 
             # Urban Classification
             if suitability_score >= 80.0:
-                sinif = "Öncelikli Gelişme Konut Alanı (15-Dk Şehir Standardı)"
+                sinif = "Öncelikli Gelişme Konut Alanı (Yüksek Donatı Erişimi)"
                 kod = "ONCELIKLI_KONUT"
                 renk = "#eab308"  # Gold
             elif suitability_score >= 60.0:
@@ -1396,7 +1410,7 @@ class AdaptiveAmenityWeightingEngine:
     """
     Adaptive Amenity Deficit Weighting & Stochastic Land-Use Equilibrium Engine.
 
-    Operationalizes the Professor's Planning Methodology:
+    Operationalizes Per-Block Normative Deficit & Equilibrium Allocation:
     1. Per-Residential-Block Amenity Density & Deficit Weights:
        - Compares accessible facility area per capita (m²/person) against MPYY Annex-2
          standards (e.g. Park 10 m², Primary School 2 m², Middle School 2 m², Health/ASM 0.75 m²).
@@ -1426,6 +1440,8 @@ class AdaptiveAmenityWeightingEngine:
             "ilkokul": 2.0,
             "ortaokul": 2.0,
             "lise": 2.0,
+            "anaokulu": 0.50,
+            "kres": 0.50,
             "asm": 0.75,
             "saglik": 0.75,
             "ibadet": 0.50,
@@ -1436,6 +1452,188 @@ class AdaptiveAmenityWeightingEngine:
             if k in cat_key.lower():
                 return v
         return 1.5
+
+    @staticmethod
+    def compute_neighborhood_deficit_weights(cpt, dyn_profiles, dyn_facilities, specs):
+        """
+        Computes population-weighted local amenity deficit weights for any candidate point
+        from nearby residential block profiles, enforcing a 450m park-proximity guard.
+        Returns (agg_weights, neighborhood_blocks, tot_n_pop, avg_satisfaction, max_cat, max_val).
+        """
+        neighborhood_blocks = []
+        for r_id, prof in (dyn_profiles or {}).items():
+            rpt = prof["pt"]
+            dist = math.hypot(cpt.x() - rpt.x(), cpt.y() - rpt.y())
+            if dist <= 900.0:
+                neighborhood_blocks.append((r_id, prof, dist))
+
+        if not neighborhood_blocks and dyn_profiles:
+            sorted_all = sorted(
+                dyn_profiles.items(),
+                key=lambda item: math.hypot(cpt.x() - item[1]["pt"].x(), cpt.y() - item[1]["pt"].y())
+            )
+            neighborhood_blocks = [
+                (item[0], item[1], math.hypot(cpt.x() - item[1]["pt"].x(), cpt.y() - item[1]["pt"].y()))
+                for item in sorted_all[:3]
+            ]
+
+        tot_n_pop = sum(item[1]["nufus"] for item in neighborhood_blocks)
+        if tot_n_pop <= 0:
+            tot_n_pop = 1.0
+
+        agg_weights = {}
+        for cat in specs.keys():
+            if specs[cat].get("key_id", "").lower() == "konut":
+                continue
+            w_sum = sum(item[1]["nufus"] * item[1]["ihtiyac_agirligi"].get(cat, 0.0) for item in neighborhood_blocks)
+            agg_weights[cat] = round(w_sum / tot_n_pop, 3)
+
+        # Nearby park proximity guard (<= 450 m) prevents redundant oversized park allocations
+        d_park_near = float('inf')
+        for p_cat_cand, p_items in (dyn_facilities or {}).items():
+            if any(k in p_cat_cand.lower() for k in ("park", "yesil", "yeşil")):
+                for p_item in p_items:
+                    pt_p = p_item[1] if isinstance(p_item, (list, tuple)) and len(p_item) >= 2 else p_item[0]
+                    d_park_near = min(d_park_near, math.hypot(cpt.x() - pt_p.x(), cpt.y() - pt_p.y()))
+        if d_park_near <= 450.0:
+            for p_key in list(agg_weights.keys()):
+                if any(k in p_key.lower() for k in ("park", "yesil", "yeşil")):
+                    agg_weights[p_key] = 0.0
+
+        if agg_weights:
+            max_deficit_cat = max(agg_weights.keys(), key=lambda c: agg_weights[c])
+            max_deficit_val = agg_weights[max_deficit_cat]
+            avg_satisfaction = round(
+                (1.0 - (sum(agg_weights.values()) / max(len(agg_weights), 1))) * 100.0, 1
+            )
+        else:
+            max_deficit_cat = "None"
+            max_deficit_val = 0.0
+            avg_satisfaction = 100.0
+
+        return agg_weights, neighborhood_blocks, tot_n_pop, avg_satisfaction, max_deficit_cat, max_deficit_val
+
+    @classmethod
+    def evaluate_housing_parcel_equilibrium(
+        cls,
+        parcel_geom,
+        graph,
+        specs,
+        fac_by_type,
+        newly_placed_points=None,
+        net_dist_maps=None,
+        comm_pts=None,
+        newly_placed_comm_pts=None,
+        comm_dist_map=None,
+        neighborhood_pop=1500.0,
+        gross_density_pop_per_ha=180.0,
+    ):
+        """
+        Unified Road-Network Walkability + Carrying-Capacity Feedback evaluator
+        for every single Proposed Residential Development parcel (`Onerilen_Konut_Adalari`).
+        """
+        area_m2 = parcel_geom.area()
+        cpt = parcel_geom.centroid().asPoint()
+        nid, snap_d = graph.snap_polygon_to_node(parcel_geom)
+        newly_placed_points = newly_placed_points or {}
+        net_dist_maps = net_dist_maps or {}
+        comm_pts = comm_pts or []
+        newly_placed_comm_pts = newly_placed_comm_pts or []
+        comm_dist_map = comm_dist_map or {}
+
+        def _min_dist_for_key(key_kw):
+            best = float('inf')
+            tot_area = 0.0
+            tot_cap = 0.0
+            for cname, sp in specs.items():
+                if sp.get("key_id", "").lower() == key_kw or key_kw in cname.lower():
+                    dmap = net_dist_maps.get(cname, {})
+                    if nid is not None and nid in dmap:
+                        best = min(best, dmap[nid] + snap_d)
+                    for it in fac_by_type.get(cname, []):
+                        best = min(best, math.hypot(cpt.x() - it[1].x(), cpt.y() - it[1].y()) * 1.18)
+                        tot_area += float(it[3])
+                        tot_cap += float(it[2])
+                    for np_item in newly_placed_points.get(cname, []):
+                        np_pt = np_item[0]
+                        best = min(best, math.hypot(cpt.x() - np_pt.x(), cpt.y() - np_pt.y()) * 1.15)
+                        tot_area += float(sp.get("min_area", 2000.0))
+                        tot_cap += float(sp.get("unit_cap", 2500.0))
+            return best, tot_area, tot_cap
+
+        d_sch, sch_a, sch_cap = _min_dist_for_key("ilkokul")
+        d_mid, _, _ = _min_dist_for_key("ortaokul")
+        d_asm, asm_a, asm_cap = _min_dist_for_key("asm")
+        d_park, park_a, _ = _min_dist_for_key("park")
+
+        d_comm = (comm_dist_map[nid] + snap_d) if (nid is not None and nid in comm_dist_map) else float('inf')
+        for cp in comm_pts:
+            d_comm = min(d_comm, math.hypot(cpt.x() - cp.x(), cpt.y() - cp.y()) * 1.18)
+        for ncp in newly_placed_comm_pts:
+            d_comm = min(d_comm, math.hypot(cpt.x() - ncp.x(), cpt.y() - ncp.y()) * 1.15)
+
+        u_sch = ResidentialGrowthNetworkEvaluator._distance_decay_utility(d_sch, 500.0)
+        u_mid = ResidentialGrowthNetworkEvaluator._distance_decay_utility(d_mid, 1000.0)
+        u_asm = ResidentialGrowthNetworkEvaluator._distance_decay_utility(d_asm, 500.0)
+        u_park = ResidentialGrowthNetworkEvaluator._distance_decay_utility(d_park, 500.0)
+        u_comm = ResidentialGrowthNetworkEvaluator._distance_decay_utility(d_comm, 800.0)
+
+        prospective_pop = max(1, int(round((area_m2 / 10000.0) * gross_density_pop_per_ha)))
+        simulated_demand = max(neighborhood_pop, 500.0) + prospective_pop
+
+        feedback_warnings = []
+        if sch_a > 0 and (sch_a / simulated_demand) < 2.0 * 0.68:
+            feedback_warnings.append("İlkokul kişi başı alanı sınır değerde")
+        if sch_cap > 0 and simulated_demand > sch_cap * 1.25:
+            feedback_warnings.append("İlkokul kapasite sınırı hassas")
+        if asm_cap > 0 and simulated_demand > asm_cap * 1.25:
+            feedback_warnings.append("Sağlık tesisi kapasitesi hassas")
+        if park_a > 0 and (park_a / simulated_demand) < 10.0 * 0.60:
+            feedback_warnings.append("Park kişi başı oranı sınır değerde")
+
+        c_safe = 1.0 if not feedback_warnings else max(0.45, 1.0 - 0.18 * len(feedback_warnings))
+        walk_score = round(
+            max(
+                0.0,
+                min(
+                    100.0,
+                    (0.27 * u_sch + 0.22 * u_park + 0.20 * u_asm + 0.15 * u_mid + 0.08 * u_comm + 0.08 * c_safe)
+                    * 100.0,
+                ),
+            ),
+            1,
+        )
+
+        if walk_score >= 68.0 and not feedback_warnings:
+            kod = "ONCELIKLI_KONUT"
+            kullanim = "Öncelikli Gelişme Konut Alanı (Erişim & Kapasite Onaylı)"
+            fb_str = "Kapasite & Denge Onaylı (OK)"
+        elif walk_score >= 45.0:
+            kod = "UYGUN_KONUT" if not feedback_warnings else "SARTLI_KONUT"
+            kullanim = (
+                "Uygun Gelişme Konut Alanı"
+                if not feedback_warnings
+                else "Şartlı Gelişme Konut Alanı (Kapasite / Donatı Uyarısı)"
+            )
+            fb_str = "Kapasite Uygun (OK)" if not feedback_warnings else f"Uyarı: {'; '.join(feedback_warnings)}"
+        else:
+            kod = "SARTLI_KONUT"
+            kullanim = "Şartlı Gelişme Konut Alanı (Kapasite / Donatı Uyarısı)"
+            fb_str = "Uyarı: Donatı erişimi / kapasite takviyesi önerilir"
+
+        return {
+            "kod": kod,
+            "kullanim_turu": kullanim,
+            "ongorulen_nufus": prospective_pop,
+            "yol_erisim_skoru": walk_score,
+            "ilkokul_yol_m": round(d_sch, 1) if d_sch < 1e8 else -1.0,
+            "ortaokul_yol_m": round(d_mid, 1) if d_mid < 1e8 else -1.0,
+            "asm_yol_m": round(d_asm, 1) if d_asm < 1e8 else -1.0,
+            "park_yol_m": round(d_park, 1) if d_park < 1e8 else -1.0,
+            "ticari_yol_m": round(d_comm, 1) if d_comm < 1e8 else -1.0,
+            "kapasite_geri_besleme": fb_str,
+            "feedback_ok": len(feedback_warnings) == 0,
+        }
 
     @classmethod
     def compute_block_amenity_profiles(
@@ -1600,59 +1798,10 @@ class AdaptiveAmenityWeightingEngine:
             cpt = geom.centroid().asPoint()
             v_nid, v_snap = graph.snap_polygon_to_node(geom)
 
-            # 1. Identify nearby residential blocks within walking catchment
-            neighborhood_blocks = []
-            for r_id, prof in dyn_profiles.items():
-                rpt = prof["pt"]
-                dist = math.hypot(cpt.x() - rpt.x(), cpt.y() - rpt.y())
-                if dist <= 900.0:
-                    neighborhood_blocks.append((r_id, prof, dist))
-
-            if not neighborhood_blocks:
-                sorted_all = sorted(
-                    dyn_profiles.items(),
-                    key=lambda item: math.hypot(cpt.x() - item[1]["pt"].x(), cpt.y() - item[1]["pt"].y())
-                )
-                neighborhood_blocks = [
-                    (item[0], item[1], math.hypot(cpt.x() - item[1]["pt"].x(), cpt.y() - item[1]["pt"].y()))
-                    for item in sorted_all[:3]
-                ]
-
-            # 2. Compute population-weighted neighborhood deficit weights
-            tot_n_pop = sum(item[1]["nufus"] for item in neighborhood_blocks)
-            if tot_n_pop <= 0:
-                tot_n_pop = 1.0
-
-            agg_weights = {}
-            for cat in specs.keys():
-                if specs[cat].get("key_id", "").lower() == "konut":
-                    continue
-                w_sum = sum(item[1]["nufus"] * item[1]["ihtiyac_agirligi"].get(cat, 0.0) for item in neighborhood_blocks)
-                agg_weights[cat] = round(w_sum / tot_n_pop, 3)
-
-            # Check nearby park proximity: if a major park exists or was placed within 450m,
-            # zero out park deficit so vacant parcels are not redundantly turned into giant parks!
-            d_park_near = float('inf')
-            for p_cat_cand, p_items in dyn_facilities.items():
-                if any(k in p_cat_cand.lower() for k in ("park", "yesil", "yeşil")):
-                    for p_item in p_items:
-                        d_park_near = min(d_park_near, math.hypot(cpt.x() - p_item[1].x(), cpt.y() - p_item[1].y()))
-            if d_park_near <= 450.0:
-                for p_key in list(agg_weights.keys()):
-                    if any(k in p_key.lower() for k in ("park", "yesil", "yeşil")):
-                        agg_weights[p_key] = 0.0
-
-            # Overall neighborhood satisfaction
-            if agg_weights:
-                max_deficit_cat = max(agg_weights.keys(), key=lambda c: agg_weights[c])
-                max_deficit_val = agg_weights[max_deficit_cat]
-                avg_neighborhood_satisfaction = round(
-                    (1.0 - (sum(agg_weights.values()) / max(len(agg_weights), 1))) * 100.0, 1
-                )
-            else:
-                max_deficit_cat = "None"
-                max_deficit_val = 0.0
-                avg_neighborhood_satisfaction = 100.0
+            # 1 & 2. Compute population-weighted neighborhood deficit weights with park-proximity safeguard
+            agg_weights, neighborhood_blocks, tot_n_pop, avg_neighborhood_satisfaction, max_deficit_cat, max_deficit_val = (
+                cls.compute_neighborhood_deficit_weights(cpt, dyn_profiles, dyn_facilities, specs)
+            )
 
             # 3. Decision Gate: Amenity vs Residential Growth
             if max_deficit_val >= satisfaction_threshold:

@@ -42,6 +42,11 @@ from mpyy_donati_analiz.mpyy_engine import (
 from mpyy_donati_analiz.mpyy_dialog import MPYYDonatiDialog
 from qgis.core import QgsField
 from qgis.PyQt.QtCore import QVariant
+try:
+    from qgis.PyQt.QtCore import QMetaType
+    _QSTR_TYPE = QMetaType.Type.QString
+except (ImportError, AttributeError):
+    _QSTR_TYPE = getattr(QVariant, "String", 10)
 
 
 class TestMPYYDonatiAnalizE2E(unittest.TestCase):
@@ -111,12 +116,12 @@ class TestMPYYDonatiAnalizE2E(unittest.TestCase):
         crs = QgsCoordinateReferenceSystem("EPSG:5253")
         old_lyr = QgsVectorLayer("Polygon?crs=EPSG:5253", "old_plan", "memory")
         opr = old_lyr.dataProvider()
-        opr.addAttributes([QgsField("plan_fonk", QVariant.String)])
+        opr.addAttributes([QgsField("plan_fonk", _QSTR_TYPE)])
         old_lyr.updateFields()
 
         act_lyr = QgsVectorLayer("Polygon?crs=EPSG:5253", "actual_use", "memory")
         apr = act_lyr.dataProvider()
-        apr.addAttributes([QgsField("fiili_kullanim", QVariant.String)])
+        apr.addAttributes([QgsField("fiili_kullanim", _QSTR_TYPE)])
         act_lyr.updateFields()
 
         def make_sq(x, y, s):
@@ -227,19 +232,56 @@ class TestMPYYDonatiAnalizE2E(unittest.TestCase):
         dlg = MPYYDonatiDialog(None)
         dlg.create_demo_layers()
 
+        # Verify streamlined Section 2 / Section 3 / Section 4 UI contract
+        self.assertFalse(hasattr(dlg, "chk_auto_split"))
+        self.assertFalse(hasattr(dlg, "chk_adaptive_stochastic"))
+        self.assertFalse(hasattr(dlg, "chk_propose_res_growth"))
+        self.assertFalse(hasattr(dlg, "chk_out_stochastic"))
+        self.assertFalse(hasattr(dlg, "chk_out_res_growth"))
+        self.assertGreaterEqual(dlg.tbl_params.minimumHeight(), 240)
+
+        # Confirm Kindergarten row present & no Konut / no 10 m3 typo
+        table_keys = [dlg.tbl_params.item(r, 0).text().lower() for r in range(dlg.tbl_params.rowCount())]
+        self.assertTrue(any("kindergarten" in k or "anaokulu" in k for k in table_keys))
+        self.assertFalse(any("konut" in k or "residential" in k for k in table_keys))
+        self.assertFalse(any("m³" in k for k in table_keys))
+
         # Run Diff
         out_diff = dlg.run_plan_actual_diff(show_msg=False)
         self.assertIsNotNone(out_diff)
         diff_layers = QgsProject.instance().mapLayersByName("Plan_Fiili_Kullanim_Uyusmazlik_Analizi")
         self.assertEqual(len(diff_layers), 1)
 
-        # Run Full Analysis
+        # Run Full Analysis with chk_out_konut enabled
+        dlg.chk_out_konut.setChecked(True)
         dlg.run_full_analysis(show_msg=False)
-        growth_layers = QgsProject.instance().mapLayersByName("Onerilen_Gelisme_Konut_Alanlari")
-        self.assertEqual(len(growth_layers), 1)
+        self.assertEqual(len(QgsProject.instance().mapLayersByName("Onerilen_Gelisme_Konut_Alanlari")), 0)
+        self.assertEqual(len(QgsProject.instance().mapLayersByName("MPYY_Stokastik_Dengeleme_Konut_ve_Donati")), 0)
+
+        donati_layers = QgsProject.instance().mapLayersByName("MPYY_Onerilen_ve_Bolunen_Donati_Alanlari")
+        self.assertEqual(len(donati_layers), 1)
+        for f in donati_layers[0].getFeatures():
+            self.assertNotIn("konut", str(f["onerilen_donati"]).lower())
+
         konut_layers = QgsProject.instance().mapLayersByName("Onerilen_Konut_Adalari")
         self.assertEqual(len(konut_layers), 1)
-        self.assertIn("Gelişme Konut Alanı", dlg.txt_report.toHtml())
+        self.assertGreater(konut_layers[0].featureCount(), 0)
+        field_names = [fld.name() for fld in konut_layers[0].fields()]
+        for expected_fld in ("kod", "yol_erisim_skoru", "ilkokul_yol_m", "kapasite_geri_besleme"):
+            self.assertIn(expected_fld, field_names)
+
+        report_html = dlg.txt_report.toHtml()
+        self.assertIn("Kentsel Donatı İhtiyaç Ağırlıkları, Stokastik Tarama", report_html)
+        self.assertNotIn("Hoca Modeli", report_html)
+        self.assertNotIn("15-Dakikalık", report_html)
+
+        # Switch to Turkish UI and disable chk_out_konut -> suppresses Onerilen_Konut_Adalari
+        dlg.cmb_lang.setCurrentIndex(1)  # Turkish
+        self.assertEqual(dlg.current_lang, "tr")
+        dlg.chk_out_konut.setChecked(False)
+        dlg.run_full_analysis(show_msg=False)
+        self.assertEqual(len(QgsProject.instance().mapLayersByName("Onerilen_Konut_Adalari")), 0)
+        self.assertNotIn("Hoca Modeli", dlg.txt_report.toHtml())
 
         dlg.close()
 
@@ -325,14 +367,13 @@ class TestMPYYDonatiAnalizE2E(unittest.TestCase):
         self.assertIn("feedback_durumu", allocs[0])
         self.assertIn("stokastik_sira", allocs[0])
 
-        # Also verify layer generation via MPYYDonatiDialog
+        # Also verify internal stochastic balancing computation via MPYYDonatiDialog (no duplicate map layers)
         QgsProject.instance().clear()
         dlg = MPYYDonatiDialog(None)
         dlg.create_demo_layers()
         dlg.run_full_analysis(show_msg=False)
-        stoch_lyrs = QgsProject.instance().mapLayersByName("MPYY_Stokastik_Dengeleme_Konut_ve_Donati")
-        self.assertEqual(len(stoch_lyrs), 1)
-        self.assertIn("Akademik Planlama Modeli: Konut Başına Donatı İhtiyaç Ağırlıkları", dlg.txt_report.toHtml())
+        self.assertEqual(len(QgsProject.instance().mapLayersByName("MPYY_Stokastik_Dengeleme_Konut_ve_Donati")), 0)
+        self.assertIn("Kentsel Donatı İhtiyaç Ağırlıkları, Stokastik Tarama", dlg.txt_report.toHtml())
         dlg.close()
 
 
